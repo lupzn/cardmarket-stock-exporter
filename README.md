@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
-  <b>Export your complete Cardmarket inventory to CSV in one click.</b><br>
-  Supports 8 TCG games, 5 languages, and bypasses the 300-entry pagination limit.
+  <b>Export your complete Cardmarket inventory to CSV — and bulk-update prices via CSV import.</b><br>
+  Supports 8 TCG games, 5 languages. Bypasses the 300-entry pagination limit.
 </p>
 
 <p align="center">
@@ -30,16 +30,29 @@ Tested on collections with **19,000+ cards**. Works reliably.
 
 ## ✨ Features
 
-- 📊 **Full stock export** — handles 20,000+ cards without issues
-- 🎮 **8 Games supported** — Pokémon, Magic, YuGiOh, Lorcana, One Piece, Flesh and Blood, Dragon Ball Super, Digimon
-- 🌍 **5 Languages** — German (`/de/`), English (`/en/`), French (`/fr/`), Spanish (`/es/`), Italian (`/it/`)
-- 📈 **Live progress bar** — see the current expansion, page number, and running total
-- ⏹️ **Cancel button** — abort mid-export, keep what was already collected
-- 📌 **Pin to window** — detach popup into its own window so it stays open when clicking elsewhere
-- 💰 **Auto calculates total value** — unit price × quantity per row and grand total
-- 🔄 **Deduplication** — via Cardmarket article ID, no duplicate rows
-- ⚡ **Rate-limit aware** — automatic 10-second pause on HTTP 429
-- 📁 **Excel-ready CSV** — UTF-8 BOM, semicolon separator, proper escaping
+### 📥 Stock Export
+- **Full stock export** — handles 20,000+ cards without issues
+- **8 Games supported** — Pokémon, Magic, YuGiOh, Lorcana, One Piece, Flesh and Blood, Dragon Ball Super, Digimon
+- **5 Languages** — German (`/de/`), English (`/en/`), French (`/fr/`), Spanish (`/es/`), Italian (`/it/`)
+- **Live progress bar** — current expansion, page number, running total
+- **Cancel button** — abort mid-export, keep what was already collected
+- **Auto-calculates total value** — unit price × quantity per row + grand total
+- **Deduplication** — via Cardmarket article ID, no duplicate rows
+- **Rate-limit aware** — automatic 10-second pause on HTTP 429
+- **Excel-ready CSV** — UTF-8 BOM, semicolon separator, proper escaping
+
+### ✏️ Bulk Price Update *(new in v2.0)*
+- **Edit prices in Excel/Google Sheets**, re-upload CSV → all listings updated on Cardmarket
+- **Live preview with diff** — see exactly what changes before confirming
+- **Dry-Run mode** — test without actually updating
+- **Max-change-% safety cap** — prevents typo disasters (default 200%)
+- **Skip unchanged rows** automatically
+- **~1.5 seconds per card** — 1000 updates in ~25 minutes
+- **Verify mode** — re-fetch each price after update for 100% guarantee
+
+### 🔧 Quality of Life
+- 📌 **Pin to window** — detach popup so it stays open during long operations
+- 🌍 Auto-detect language + game from current tab
 
 ## 📋 CSV Columns
 
@@ -53,6 +66,7 @@ Tested on collections with **19,000+ cards**. Works reliably.
 | `Language` | Card language |
 | `Condition` | Short condition (NM, EX, LP, ...) |
 | `ConditionFull` | Full condition name (Near Mint, ...) |
+| `ReverseHolo` | Y if Reverse Holo, N otherwise |
 | `Comments` | Your listing comments |
 | `Price_EUR` | Unit price in EUR |
 | `Amount` | Quantity in stock |
@@ -113,6 +127,36 @@ Expansion 12/67 Pokemon-Card-151 | Page 4 | Rows 1247 | Stock 2891
 
 ---
 
+## ✏️ Bulk Price Update Workflow
+
+1. **Export** your stock first (Export tab) — gives you a CSV with `ArticleID` + `Price_EUR` columns
+2. **Edit prices in Excel/Google Sheets** — change `Price_EUR` values for the rows you want to update
+3. Save as CSV (keep semicolon separator, UTF-8 encoding)
+4. **Switch to "Bulk Update" tab** in the extension
+5. **Upload the edited CSV** via "Datei wählen"
+6. **Click "CSV analysieren + Preview"** — extension fetches current prices from Cardmarket and shows diff:
+   - Green = price increase
+   - Red = price decrease
+   - Greyed out = unchanged (will be skipped)
+7. Adjust safety options:
+   - **Max Preis-Änderung (%)** — caps maximum allowed change. Default 200%. Increase if you have legitimate huge changes.
+   - **Delay pro Update** — milliseconds between updates. Default 250ms. Increase if you hit rate limits.
+   - **Dry-Run** — runs the entire flow but skips actual write to Cardmarket. **Test with dry-run first!**
+   - **Verify nach Update** — re-fetches each updated price for 100% confirmation (slower but bulletproof)
+8. **Click "Bestätige Update: X Artikel"** — confirms then runs
+9. Live progress shows current article + step
+10. **Cancel** anytime — already-updated articles stay updated
+
+### Safety guarantees
+
+- Unchanged rows are skipped automatically (only diffs are sent)
+- Cap on max % change prevents accidental destructive edits
+- Confirmation dialog before any live write
+- Per-article error logging — see exactly which IDs failed
+- Cardmarket's own form validation runs (price pattern, etc.)
+
+---
+
 ## ❓ FAQ
 
 ### Is this tool safe? Does it steal my Cardmarket password?
@@ -140,6 +184,20 @@ Yes. The language dropdown in the popup rewrites the URL accordingly. Just make 
 ### Will this get my Cardmarket account banned?
 
 The extension uses reasonable request pacing (default 500ms between pages) and respects rate limits. It performs standard `GET` requests that are indistinguishable from normal browsing, just automated. Use reasonable settings. **Use at your own risk** — the author accepts no liability.
+
+### How does Bulk Update work technically?
+
+The extension uses Cardmarket's own "Edit Article" modal flow — same as if you clicked the edit-pencil icon manually. It:
+1. Opens the edit modal natively via Bootstrap (so all of Cardmarket's JavaScript handlers attach correctly)
+2. Sets the new price in the form
+3. Triggers the form submit — Cardmarket's own AJAX framework processes the update
+4. (Optional) Re-fetches the price to verify
+
+No reverse-engineering of API endpoints, no fake requests. Uses what your browser would do.
+
+### Can I rollback a bulk update?
+
+Not automatically — but you can re-run with the previous CSV to restore old prices. Always keep your previous CSV as backup before bulk-updating.
 
 ---
 
@@ -172,10 +230,13 @@ No access to any other website, no access to browsing history, no access to tabs
 |---------|----------|
 | Export returns 0 rows | Make sure you're logged in and the tab is on `/Stock/Offers/Singles` |
 | Only ~300 cards exported | Enable **"Iterate per expansion"** checkbox |
-| Export hangs | Check browser console (F12) for errors; popup must stay open |
+| Export hangs | Pin the popup (📌 button), check browser console (F12) for errors |
 | HTTP 429 errors | Increase Delay to 1000-2000ms |
 | CSV opens wrong in Excel | Use **Data → From Text/CSV**, set delimiter to `;` and encoding to `UTF-8` |
 | Prices look wrong | Confirm you're on the correct locale — EUR only |
+| Bulk Update: "modal did not load form" | Refresh the Cardmarket tab so the page JS is fresh, then retry |
+| Bulk Update hangs after first card | Refresh the Cardmarket tab and re-run — modal state can get stuck |
+| Bulk Update: "verify FAIL" | Cardmarket's response was non-200 (validation error?). Check format of `Price_EUR` in CSV |
 
 ---
 

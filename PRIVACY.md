@@ -1,19 +1,26 @@
 # Privacy Policy — Cardmarket Stock Exporter
 
-**Last updated:** 2026-04-24
+**Last updated:** 2026-04-25
 
 ## Summary
 
-This extension does **not** collect, store, transmit, or share any user data. It operates entirely within your browser.
+This extension does **not** collect, store, transmit, or share any user data with anyone other than Cardmarket itself. It operates entirely within your browser.
 
 ## What data the extension accesses
 
-The extension accesses only the HTML content of pages on `https://www.cardmarket.com/*` when you explicitly click the extension icon and initiate an export. Specifically, it reads:
+The extension interacts only with `https://www.cardmarket.com/*` and only when you explicitly initiate an action. Specifically, it can:
 
+**Read (Stock Export feature):**
 - Your own stock listings (card names, quantities, prices, conditions, comments)
 - Cardmarket's public expansion metadata
 
-The extension uses your existing browser session cookie (set when you logged into cardmarket.com) to retrieve your own stock pages. Your **username, password, email address, payment information, or personal details are never read, stored, or transmitted.**
+**Write (Bulk Price Update feature, only when you upload a CSV and confirm):**
+- Update the price of your existing listings via Cardmarket's standard "Edit Article" form
+- No new listings are created, no listings are deleted
+- Only the `Price_EUR` field is changed; condition, language, comments, etc. stay as-is
+- Each update uses Cardmarket's own form-submission flow (same as if you clicked Edit yourself)
+
+The extension uses your existing browser session cookie (set when you logged into cardmarket.com) to authenticate. Your **username, password, email address, payment information, or personal details are never read, stored, or transmitted.**
 
 ## What data the extension collects
 
