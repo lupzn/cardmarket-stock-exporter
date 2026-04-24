@@ -25,6 +25,19 @@
   .brand .logo { font-family: 'Segoe UI', system-ui, sans-serif; font-weight: 800; letter-spacing: 2px; font-size: 11px; background: linear-gradient(90deg, #2563eb, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
   .brand a { color: #555; text-decoration: none; }
   .brand a:hover { color: #a855f7; }
+  .tabs { display:flex; gap:4px; margin-bottom:10px; border-bottom:1px solid #333; }
+  .tab { flex:1; padding:8px; background:transparent; color:#888; border:0; border-bottom:2px solid transparent; cursor:pointer; font-size:12px; border-radius:0; margin:0; }
+  .tab.active { color:#fff; border-bottom-color:#2563eb; background:transparent; }
+  .section { display:none; }
+  .section.active { display:block; }
+  .diffTable { width:100%; font-size:10px; max-height:200px; overflow-y:auto; background:#0f0f0f; padding:6px; border-radius:3px; font-family:monospace; margin-top:6px; }
+  .diffTable table { width:100%; border-collapse:collapse; }
+  .diffTable td { padding:2px 4px; border-bottom:1px solid #222; }
+  .diffUp { color:#6ee7b7; }
+  .diffDown { color:#f87171; }
+  .diffSame { color:#555; }
+  .warn { background:#7f1d1d; color:#fecaca; padding:8px; border-radius:3px; font-size:11px; margin:8px 0; }
+  #fileCsv { padding:8px; background:#0f0f0f; color:#eee; border:1px dashed #444; border-radius:3px; width:100%; box-sizing:border-box; font-size:11px; }
 </style>
 </head>
 <body>
@@ -35,6 +48,13 @@
 <div class="hint">
 Öffne zuerst eine <b>Stock/Offers</b>-Seite. Klick <b>📌 Pin</b> damit Popup nicht wegfliegt.
 </div>
+
+<div class="tabs">
+  <button class="tab active" data-section="exportSection">📥 Export</button>
+  <button class="tab" data-section="updateSection">✏️ Bulk Update</button>
+</div>
+
+<div id="exportSection" class="section active">
 
 <div class="row2">
   <div>
@@ -94,6 +114,53 @@
 
 <div id="status"></div>
 <div id="keepOpenHint" class="hint" style="margin-top:6px;font-size:10px;color:#888">⚠ Popup offen lassen während Export — oder <b>📌 Pin</b> klicken</div>
+
+</div><!-- /exportSection -->
+
+<div id="updateSection" class="section">
+  <div class="hint">
+    CSV bearbeiten (nur <code>Price_EUR</code> Spalte ändern), hier hochladen. Preview zeigt Diff, dann Update.
+  </div>
+
+
+  <label>CSV-Datei wählen</label>
+  <input type="file" id="fileCsv" accept=".csv,text/csv">
+
+  <div class="row2" style="margin-top:8px">
+    <div>
+      <label>Max Preis-Änderung (%)</label>
+      <input id="maxChangePct" type="number" value="200" min="10" max="10000">
+    </div>
+    <div>
+      <label>Delay pro Update (ms)</label>
+      <input id="updateDelay" type="number" value="250" min="100">
+    </div>
+  </div>
+
+  <div class="opts">
+    <input type="checkbox" id="dryRun" checked>
+    <label for="dryRun" style="margin:0"><b>Dry-Run</b> (nichts wird gespeichert — nur testen)</label>
+  </div>
+  <div class="opts">
+    <input type="checkbox" id="verifyAfter">
+    <label for="verifyAfter" style="margin:0">Verify nach Update (langsamer aber sicher)</label>
+  </div>
+
+  <div id="updatePreview"></div>
+
+  <button id="btnAnalyze" class="secondary">CSV analysieren + Preview</button>
+  <button id="btnUpdate" style="display:none;background:#dc2626">Bestätige Update: <span id="updateCount">0</span> Artikel</button>
+  <button id="btnAbortUpdate" class="secondary" style="background:#dc2626;display:none">Abbrechen</button>
+
+  <div id="updateProgress" style="display:none;margin-top:8px;padding:8px;background:#0f0f0f;border-radius:3px;font-size:11px;font-family:monospace;border:1px solid #dc2626">
+    <div style="height:4px;background:#222;border-radius:2px;overflow:hidden;margin-bottom:6px">
+      <div id="updateProgFill" style="height:100%;width:0%;background:#dc2626;transition:width .3s"></div>
+    </div>
+    <div id="updateProgText">…</div>
+  </div>
+
+  <div id="updateLog" style="margin-top:10px;font-size:10px;max-height:200px;overflow-y:auto;background:#0f0f0f;padding:6px;border-radius:3px;font-family:monospace"></div>
+</div><!-- /updateSection -->
 
 <div class="donation">
   Gefällt dir das Tool? Spende gerne:<br>

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Cardmarket Stock Exporter",
-  "version": "1.0.0",
-  "description": "Exportiert kompletten Cardmarket-Lagerbestand als CSV (Name, Menge, Einzel- und Gesamtpreis). by LUPZN",
+  "version": "2.0.0",
+  "description": "Exportiert Cardmarket-Lagerbestand als CSV + Bulk-Price-Update via CSV-Import. by LUPZN",
   "author": "LUPZN",
   "permissions": ["activeTab", "scripting", "downloads", "tabs"],
   "host_permissions": ["https://www.cardmarket.com/*"],
