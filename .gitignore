@@ -17,3 +17,9 @@ CHROME_STORE_LISTING.md
 cardmarket-stock-exporter-v*.zip
 screenshots/raw/
 screenshots/store/
+build.ps1
+build.bat
+build-screenshots.ps1
+build-screenshots.bat
+build-promo.ps1
+build-promo.bat
