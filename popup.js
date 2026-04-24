@@ -186,6 +186,8 @@ async function runExport(maxPages) {
 function buildCsv(rows) {
   const cols = ['ArticleID', 'Name', 'ExpansionCode', 'Expansion', 'Rarity', 'Language', 'Condition', 'ConditionFull', 'ReverseHolo', 'Comments', 'Price_EUR', 'Amount', 'Total_EUR', 'ProductUrl'];
   const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  // Excel-formula wrapper to keep long IDs as text (otherwise Excel converts to scientific notation)
+  const escId = id => `"=""${String(id ?? '').replace(/"/g, '""')}"""`;
   const yn = b => b ? 'Y' : 'N';
   const lines = [cols.join(';')];
   for (const r of rows) {
@@ -194,9 +196,10 @@ function buildCsv(rows) {
     const amt = parseInt(amtStr, 10) || 0;
     const total = (priceNum * amt).toFixed(2).replace('.', ',');
     lines.push([
-      r.articleId, r.name, r.expansionCode, r.expansion, r.rarity, r.language, r.condition, r.conditionFull,
-      yn(r.reverse), r.comments, r.price, amtStr, total, r.productUrl,
-    ].map(esc).join(';'));
+      escId(r.articleId),
+      esc(r.name), esc(r.expansionCode), esc(r.expansion), esc(r.rarity), esc(r.language), esc(r.condition), esc(r.conditionFull),
+      esc(yn(r.reverse)), esc(r.comments), esc(r.price), esc(amtStr), esc(total), esc(r.productUrl),
+    ].join(';'));
   }
   return lines.join('\r\n');
 }
@@ -471,7 +474,7 @@ const ulog = (msg, cls = '') => {
   updateLogEl.scrollTop = updateLogEl.scrollHeight;
 };
 
-// Parse CSV (semicolon-separated, quoted)
+// Parse CSV (semicolon-separated, quoted, Excel-formula-aware)
 function parseCsv(text) {
   text = text.replace(/^\uFEFF/, ''); // strip BOM
   const lines = text.split(/\r?\n/).filter(l => l.length > 0);
@@ -494,11 +497,25 @@ function parseCsv(text) {
     out.push(cur);
     return out;
   };
-  const headers = parseLine(lines[0]);
+  // Strip Excel-formula wrapper ="..." → ...
+  // Also recover from scientific notation if Excel mangled the value
+  const cleanVal = (v) => {
+    let s = String(v || '').trim();
+    // Excel formula: ="1837013594" → 1837013594
+    const fm = s.match(/^="(.*)"$/);
+    if (fm) s = fm[1];
+    return s;
+  };
+  const headers = parseLine(lines[0]).map(cleanVal);
   const rows = lines.slice(1).map(l => {
-    const vals = parseLine(l);
+    const vals = parseLine(l).map(cleanVal);
     const obj = {};
     headers.forEach((h, i) => obj[h] = vals[i] || '');
+    // Recover ArticleID from scientific notation (Excel-mangled)
+    if (obj.ArticleID && /^\d+(\.\d+)?[eE][+-]?\d+$/.test(obj.ArticleID)) {
+      obj.ArticleID = String(Math.round(parseFloat(obj.ArticleID)));
+      obj._articleIdRecovered = true;
+    }
     return obj;
   });
   return { headers, rows };
@@ -556,6 +573,8 @@ btnAnalyze.addEventListener('click', async () => {
   }
 
   if (invalid > 0) ulog(`⚠ ${invalid} Zeilen ungültig (fehlende ID/Preis)`, 'err');
+  const recovered = rows.filter(r => r._articleIdRecovered).length;
+  if (recovered > 0) ulog(`ℹ ${recovered} ArticleIDs aus Scientific-Notation wiederhergestellt (Excel-Bug)`, 'ok');
 
   // Fetch current prices in parallel batches
   const [{ result: currentPrices }] = await chrome.scripting.executeScript({
