@@ -1,0 +1,17 @@
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
+node_modules/
+*.zip
+*.crx
+*.pem
+test-export*.csv
+cardmarket-stock-*.csv
+cardmarket-debug-*.html
+cardmarket-live-row-*.html
+cardmarket-rawfetch-*.html
+HOW_TO_PUBLISH.md
+CHROME_STORE_LISTING.md
+cardmarket-stock-exporter-v*.zip

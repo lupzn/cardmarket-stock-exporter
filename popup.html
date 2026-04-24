@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: system-ui, sans-serif; width: 360px; padding: 12px; background:#1a1a1a; color:#eee; margin:0; }
+  h3 { margin: 0 0 6px; font-size: 15px; }
+  .hint { font-size: 11px; color:#aaa; margin-bottom: 10px; line-height: 1.4; }
+  button { width: 100%; padding: 9px; font-size: 13px; background:#2563eb; color:#fff; border:0; border-radius:4px; cursor:pointer; margin-bottom:6px; }
+  button.secondary { background:#444; }
+  button:disabled { background:#555; cursor:wait; }
+  #status { margin-top: 10px; font-size: 11px; max-height: 240px; overflow-y:auto; background:#0f0f0f; padding:6px; border-radius:3px; font-family: monospace; }
+  .err { color:#f87171; }
+  .ok { color:#6ee7b7; }
+  label { font-size: 11px; display:block; margin-bottom:4px; margin-top:4px; }
+  input[type=number], select { width: 100%; padding:5px; background:#0f0f0f; color:#eee; border:1px solid #444; border-radius:3px; box-sizing:border-box; }
+  .row2 { display:flex; gap:8px; }
+  .row2 > div { flex:1; }
+  .row2 label { margin-top:0; }
+  .opts { display:flex; align-items:center; gap:6px; margin: 6px 0; font-size:11px; }
+  .donation { margin-top: 12px; text-align:center; font-size:11px; color:#aaa; border-top: 1px solid #333; padding-top:10px; }
+  .donation a { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; background:#ffc439; color:#003087; text-decoration:none; border-radius:4px; font-weight:600; font-size:11px; }
+  .donation a:hover { background:#ffb200; }
+  .brand { display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:8px; border-top:1px solid #222; font-size:10px; color:#555; }
+  .brand .logo { font-family: 'Segoe UI', system-ui, sans-serif; font-weight: 800; letter-spacing: 2px; font-size: 11px; background: linear-gradient(90deg, #2563eb, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+  .brand a { color: #555; text-decoration: none; }
+  .brand a:hover { color: #a855f7; }
+</style>
+</head>
+<body>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+  <h3 style="margin:0">Cardmarket Stock → CSV</h3>
+  <button id="detach" title="Im eigenen Fenster öffnen (schließt sich nicht versehentlich)" style="width:auto;padding:4px 8px;font-size:11px;background:#2563eb;margin:0">📌 Pin</button>
+</div>
+<div class="hint">
+Öffne zuerst eine <b>Stock/Offers</b>-Seite. Klick <b>📌 Pin</b> damit Popup nicht wegfliegt.
+</div>
+
+<div class="row2">
+  <div>
+    <label>Sprache</label>
+    <select id="lang">
+      <option value="de">Deutsch (/de/)</option>
+      <option value="en">Englisch (/en/)</option>
+      <option value="fr">Französisch (/fr/)</option>
+      <option value="es">Spanisch (/es/)</option>
+      <option value="it">Italienisch (/it/)</option>
+    </select>
+  </div>
+  <div>
+    <label>Spiel</label>
+    <select id="game">
+      <option value="Pokemon">Pokémon</option>
+      <option value="Magic">Magic</option>
+      <option value="YuGiOh">YuGiOh</option>
+      <option value="FleshAndBlood">FaB</option>
+      <option value="Lorcana">Lorcana</option>
+      <option value="OnePiece">One Piece</option>
+      <option value="DragonBallSuper">DBS</option>
+      <option value="DigimonCardGame">Digimon</option>
+    </select>
+  </div>
+</div>
+
+<div class="row2">
+  <div>
+    <label>Max. Seiten (0 = alle)</label>
+    <input id="maxPages" type="number" value="0" min="0">
+  </div>
+  <div>
+    <label>Delay (ms)</label>
+    <input id="delay" type="number" value="500" min="0">
+  </div>
+</div>
+
+<div class="opts">
+  <input type="checkbox" id="useSortBy" checked>
+  <label for="useSortBy" style="margin:0">sortBy=name_asc</label>
+</div>
+<div class="opts">
+  <input type="checkbox" id="perExpansion" checked>
+  <label for="perExpansion" style="margin:0">Pro Erweiterung iterieren (nötig für >300)</label>
+</div>
+
+<button id="run">Vollständigen Export starten</button>
+<button id="abort" class="secondary" style="background:#dc2626;display:none">Abbrechen</button>
+
+<div id="progress" style="display:none;margin-top:8px;padding:8px;background:#0f0f0f;border-radius:3px;font-size:11px;font-family:monospace;border:1px solid #2563eb">
+  <div id="progBar" style="height:4px;background:#222;border-radius:2px;overflow:hidden;margin-bottom:6px">
+    <div id="progFill" style="height:100%;width:0%;background:#2563eb;transition:width .3s"></div>
+  </div>
+  <div id="progText">…</div>
+</div>
+
+<div id="status"></div>
+<div id="keepOpenHint" class="hint" style="margin-top:6px;font-size:10px;color:#888">⚠ Popup offen lassen während Export — oder <b>📌 Pin</b> klicken</div>
+
+<div class="donation">
+  Gefällt dir das Tool? Spende gerne:<br>
+  <a href="https://www.paypal.com/donate/?hosted_button_id=X8MG6CZK2PETS" target="_blank" rel="noopener">
+    ♥ PayPal Donate
+  </a>
+</div>
+
+<div class="brand">
+  <span>made with ♥ by</span>
+  <a href="https://github.com/LUPZN" target="_blank" rel="noopener"><span class="logo">LUPZN</span></a>
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>
