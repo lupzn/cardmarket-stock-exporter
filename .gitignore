@@ -23,3 +23,8 @@ build-screenshots.ps1
 build-screenshots.bat
 build-promo.ps1
 build-promo.bat
+build-extension-icons.ps1
+build-extension-icons.bat
+build-channel-art.ps1
+build-channel-art.bat
+promo-video.html
