@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="#installation"><img src="https://img.shields.io/badge/Chrome%20Web%20Store-Pending%20Review-orange?logo=google-chrome&logoColor=white" alt="Chrome Web Store - Pending Review"></a>
+  <a href="https://chromewebstore.google.com/detail/fdhioinnlcopijnekmkpfkopeplpgdkj"><img src="https://img.shields.io/badge/Chrome%20Web%20Store-Install-4285F4?logo=google-chrome&logoColor=white" alt="Chrome Web Store"></a>
   <a href="https://github.com/LUPZN/cardmarket-stock-exporter/releases/latest"><img src="https://img.shields.io/github/v/release/LUPZN/cardmarket-stock-exporter?color=2563eb" alt="Latest Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License"></a>
   <a href="https://www.paypal.com/donate/?hosted_button_id=X8MG6CZK2PETS"><img src="https://img.shields.io/badge/PayPal-Donate-ffc439?logo=paypal&logoColor=white" alt="Donate via PayPal"></a>
@@ -79,9 +79,7 @@ Tested on collections with **19,000+ cards**. Works reliably.
 
 ### Option A — Chrome Web Store (recommended)
 
-> ⏳ **Currently pending Google review.** Submitted to the Chrome Web Store and awaiting approval (typically 1-3 business days). Use Option B below to install manually in the meantime — same code, same features.
-
-1. Open the [Chrome Web Store listing](https://chrome.google.com/webstore/detail/YOUR_EXTENSION_ID) *(coming soon)*
+1. Open the [Chrome Web Store listing](https://chromewebstore.google.com/detail/fdhioinnlcopijnekmkpfkopeplpgdkj)
 2. Click **"Add to Chrome"**
 3. Confirm the permissions
 4. Done — icon appears in the Chrome toolbar
@@ -254,7 +252,7 @@ If this extension saves you hours of manual work, consider a small donation. Eve
 
 You can also:
 - ⭐ **Star this repo** on GitHub
-- 🌟 **Rate 5 stars** on the Chrome Web Store *(once approved)*
+- 🌟 **Rate 5 stars** on the [Chrome Web Store](https://chromewebstore.google.com/detail/fdhioinnlcopijnekmkpfkopeplpgdkj)
 - 🐦 **Share** with fellow TCG sellers
 
 ---
