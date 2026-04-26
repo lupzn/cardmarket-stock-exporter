@@ -1,7 +1,7 @@
 # Cardmarket Stock Exporter
 
 <p align="center">
-  <img src="icons/icon-128.png" alt="Cardmarket Stock Exporter Logo" width="96" height="96">
+  <img src="icons/icon-128.png?v=2" alt="Cardmarket Stock Exporter Logo" width="96" height="96">
 </p>
 
 <p align="center">
