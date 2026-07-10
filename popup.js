@@ -16,6 +16,15 @@ const keepOpenHintEl = document.getElementById('keepOpenHint');
 // v2.2: i18n shorthand
 const t = (key, vars) => (window.i18n ? window.i18n.getMsg(key, vars || []) : key);
 
+// v2.2.6: inline bilingual log helper — picks DE/EN by current UI locale.
+// Used for the many free-text log/status messages that would otherwise stay
+// hardcoded German even on an English UI (reported in issue #1). Cheaper than
+// one messages.json key per line; supports interpolation at the call site.
+const tl = (de, en) => {
+  const loc = (window.i18n && window.i18n.currentLocale && window.i18n.currentLocale()) || 'de';
+  return loc === 'en' ? en : de;
+};
+
 // v2.2: i18n init — load locale, populate uiLang dropdown, apply translations
 (async () => {
   if (!window.i18n) return;
@@ -266,7 +275,7 @@ function buildCsv(rows, meta = {}) {
   // v2.1 Skip-Fetch: _OriginalPrice_EUR + _OriginalComments als Read-Only Referenz für Edit-Detection
   // Bei Re-Import wird verglichen: wenn Price_EUR === _OriginalPrice_EUR → user hat nicht editiert → skip Cardmarket-Fetch
   // Massive Reduktion der Cloudflare-Last: 1500 rows mit 50 edits → 50 fetches statt 1500
-  const cols = ['ArticleID', 'idProduct', 'Name', 'ExpansionCode', 'SetCode', 'CollectorNumber', 'Expansion', 'Rarity', 'Language', 'Condition', 'ConditionFull', 'ReverseHolo', 'Comments', '_OriginalComments', 'Price_EUR', '_OriginalPrice_EUR', 'Amount', 'Total_EUR', 'ProductUrl', 'delete'];
+  const cols = ['ArticleID', 'idProduct', 'Name', 'ExpansionCode', 'SetCode', 'CollectorNumber', 'Expansion', 'Rarity', 'Language', 'Condition', 'ConditionFull', 'ReverseHolo', 'Comments', '_OriginalComments', 'Price_EUR', '_OriginalPrice_EUR', 'Amount', 'Total_EUR', 'ProductUrl', 'ImageUrl', 'delete'];
   const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   // Excel-formula wrapper to keep long IDs as text (otherwise Excel converts to scientific notation)
   const escId = id => `"=""${String(id ?? '').replace(/"/g, '""')}"""`;
@@ -318,7 +327,7 @@ function buildCsv(rows, meta = {}) {
       esc(r.comments), esc(r.comments),
       // Price_EUR + _OriginalPrice_EUR
       esc(r.price), esc(r.price),
-      esc(amtStr), esc(total), esc(r.productUrl),
+      esc(amtStr), esc(total), esc(r.productUrl), esc(r.imageUrl || ''),
       // v2.1: delete-Spalte default N. User setzt auf Y für Bulk-Delete des Listings auf Cardmarket
       esc('N'),
     ].join(';'));
@@ -334,12 +343,40 @@ function buildCsv(rows, meta = {}) {
 async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpansion, cardLangIds }) {
   function parseRow(el) {
     const row = {};
-    const idMatch = (el.id || '').match(/articleRow(\d+)/);
-    row.articleId = idMatch ? idMatch[1] : '';
+    // v2.2.6: Cardmarket entfernte id="articleRow123" (Row heisst jetzt stockRow<id>,
+    // Klassen teils obfuskiert). idArticle robust aus mehreren Quellen ziehen.
+    let articleId = '';
+    // 1. Edit-Pencil-Link: data-modal="...Article_EditArticleModal?...idArticle=X" (eindeutig)
+    const editLink = el.querySelector('a[data-modal*="idArticle="], [data-modal*="idArticle="]');
+    if (editLink) {
+      const mm = (editLink.getAttribute('data-modal') || '').match(/idArticle=(\d+)/);
+      if (mm) articleId = mm[1];
+    }
+    // 2. Amount-Input: name="groupCountAmount<id>"
+    if (!articleId) {
+      const amtInp = el.querySelector('input[name^="groupCountAmount"]');
+      if (amtInp) {
+        const mm = (amtInp.getAttribute('name') || '').match(/groupCountAmount(\d+)/);
+        if (mm) articleId = mm[1];
+      }
+    }
+    // 3. onclick-jcp-blob / stockRow im Row-HTML
+    if (!articleId) {
+      const mm = (el.outerHTML || '').match(/(?:idArticle['"\s:=]+|stockRow)(\d+)/);
+      if (mm) articleId = mm[1];
+    }
+    // 4. Alt-Fallback: id="articleRow123" (falls CM zurueckrudert)
+    if (!articleId) {
+      const mm = (el.id || '').match(/articleRow(\d+)/);
+      if (mm) articleId = mm[1];
+    }
+    row.articleId = articleId;
     const nameLink = el.querySelector('.col-seller a') || el.querySelector('a[href*="/Products/Singles/"]');
     row.name = (nameLink?.textContent || '').trim().replace(/\s+/g, ' ');
     const href = nameLink?.getAttribute('href') || '';
     row.productUrl = href ? (href.startsWith('http') ? href : 'https://www.cardmarket.com' + href) : '';
+    // Full product image URL (S3) — consumed by stock.lupzn.de for browser-side card images.
+    { const im = (el.outerHTML || '').match(/https?:\/\/product-images\.s3\.cardmarket\.com\/[^\s"'<>\\]+\.jpg/i); row.imageUrl = im ? im[0] : ''; }
     const m = row.name.match(/\(([^)]+)\)\s*$/);
     row.expansionCode = m ? m[1] : '';
 
@@ -891,24 +928,24 @@ btnAnalyze.addEventListener('click', async () => {
   if (_setFilterList) _setFilterList.innerHTML = '';
 
   const file = fileCsv.files[0];
-  if (!file) { ulog('Keine CSV ausgewählt', 'err'); return; }
+  if (!file) { ulog(tl('Keine CSV ausgewählt', 'No CSV selected'), 'err'); return; }
 
   const text = await file.text();
   const { headers, rows, meta: bodyMeta } = parseCsv(text);
   // v2.1: Filename-Metadata merge mit Body-Metadata (Filename gewinnt für lang/game, Body für exported falls vorhanden)
   const fnameMeta = parseFilenameMeta(file.name);
   const meta = { ...bodyMeta, ...fnameMeta };
-  ulog(`CSV gelesen: ${rows.length} Zeilen, ${headers.length} Spalten`);
+  ulog(tl(`CSV gelesen: ${rows.length} Zeilen, ${headers.length} Spalten`, `CSV read: ${rows.length} rows, ${headers.length} columns`));
 
   if (!headers.includes('ArticleID') || !headers.includes('Price_EUR')) {
     // v2.1: smart detection — falsche CSV im falschen tab?
     if (headers.includes('idWant') && headers.includes('idWantsList')) {
-      ulog('❌ Falsche CSV — das ist eine Wants-CSV, nicht Stock-CSV.', 'err');
-      ulog('Wechsel zum Tab "📋 Wants" → dort "Wants-CSV wählen" für Bulk-Delete.', 'err');
+      ulog(tl('❌ Falsche CSV — das ist eine Wants-CSV, nicht Stock-CSV.', '❌ Wrong CSV — this is a Wants CSV, not a Stock CSV.'), 'err');
+      ulog(tl('Wechsel zum Tab "📋 Wants" → dort "Wants-CSV wählen" für Bulk-Delete.', 'Switch to the "📋 Wants" tab → choose "Wants CSV" there for Bulk-Delete.'), 'err');
       return;
     }
-    ulog('Fehler: CSV muss ArticleID + Price_EUR Spalten enthalten. Bist du im richtigen Tab?', 'err');
-    ulog(`Gefundene Spalten: ${headers.join(', ')}`, 'err');
+    ulog(tl('Fehler: CSV muss ArticleID + Price_EUR Spalten enthalten. Bist du im richtigen Tab?', 'Error: CSV must contain ArticleID + Price_EUR columns. Are you on the right tab?'), 'err');
+    ulog(tl(`Gefundene Spalten: ${headers.join(', ')}`, `Columns found: ${headers.join(', ')}`), 'err');
     return;
   }
 
@@ -930,10 +967,10 @@ btnAnalyze.addEventListener('click', async () => {
   }
 
   // Fetch current prices from Cardmarket to compare
-  ulog('Lade aktuelle Preise von Cardmarket für Vergleich...');
+  ulog(tl('Lade aktuelle Preise von Cardmarket für Vergleich...', 'Loading current prices from Cardmarket for comparison...'));
   const tab = await getTargetTab();
   if (!tab || !/cardmarket\.com/.test(tab.url || '')) {
-    ulog('Kein Cardmarket-Tab offen', 'err');
+    ulog(tl('Kein Cardmarket-Tab offen', 'No Cardmarket tab open'), 'err');
     return;
   }
 
@@ -1032,7 +1069,8 @@ btnAnalyze.addEventListener('click', async () => {
   if (hasSkipFetchColumns) {
     const editedCount = updates.filter(u => u.userEdited).length;
     const skipCount = updates.length - editedCount;
-    ulog(`✓ Skip-Fetch aktiv: ${editedCount} Zeilen vom User editiert, ${skipCount} unverändert (werden NICHT von Cardmarket gefetched → keine CF-Last)`, 'ok');
+    ulog(tl(`✓ Skip-Fetch aktiv: ${editedCount} Zeilen vom User editiert, ${skipCount} unverändert (werden NICHT von Cardmarket gefetched → keine CF-Last)`,
+            `✓ Skip-fetch active: ${editedCount} rows edited by you, ${skipCount} unchanged (NOT fetched from Cardmarket → no CF load)`), 'ok');
     // v2.2.1: warn loud if user has comment-edits but toggle is OFF (silent-skip = bug-source)
     if (silentCommentSkips > 0) {
       ulog(`⚠ ${silentCommentSkips} Zeilen haben geänderte Comments ABER "Comments mit-updaten"-Toggle ist AUS → diese Edits werden IGNORIERT.`, 'err');
@@ -1048,13 +1086,15 @@ btnAnalyze.addEventListener('click', async () => {
       updatePreviewEl.appendChild(warnEl);
     }
     if (editedCount === 0) {
-      ulog(`ℹ Keine Edits erkannt. Bearbeite Price_EUR oder Comments in CSV. (Falls editiert wurde: prüfe ob _OriginalPrice_EUR / _OriginalComments unverändert geblieben sind)`, 'err');
+      ulog(tl(`ℹ Keine Edits erkannt. Bearbeite Price_EUR oder Comments in CSV. (Falls editiert wurde: prüfe ob _OriginalPrice_EUR / _OriginalComments unverändert geblieben sind)`,
+              `ℹ No edits detected. Edit Price_EUR or Comments in the CSV. (If you did edit: check that _OriginalPrice_EUR / _OriginalComments were left unchanged)`), 'err');
     }
   } else {
-    ulog(`⚠ Alte CSV ohne Skip-Fetch-Ref-Spalten (_OriginalPrice_EUR, _OriginalComments). Tool muss alle ${updates.length} Zeilen fetchen → erhöhtes CF-Risiko. Re-export mit v2.1+ empfohlen.`, 'err');
+    ulog(tl(`⚠ Alte CSV ohne Skip-Fetch-Ref-Spalten (_OriginalPrice_EUR, _OriginalComments). Tool muss alle ${updates.length} Zeilen fetchen → erhöhtes CF-Risiko. Re-export mit v2.1+ empfohlen.`,
+            `⚠ Old CSV without skip-fetch reference columns (_OriginalPrice_EUR, _OriginalComments). The tool must fetch all ${updates.length} rows → higher CF risk. Re-export with v2.1+ recommended.`), 'err');
   }
 
-  if (invalid > 0) ulog(`⚠ ${invalid} Zeilen ungültig (fehlende ID/Preis)`, 'err');
+  if (invalid > 0) ulog(tl(`⚠ ${invalid} Zeilen ungültig (fehlende ID/Preis)`, `⚠ ${invalid} rows invalid (missing ID/price)`), 'err');
   const recovered = rows.filter(r => r._articleIdRecovered).length;
   if (recovered > 0) ulog(`ℹ ${recovered} ArticleIDs aus Scientific-Notation wiederhergestellt (Excel-Bug)`, 'ok');
   const idProductCount = updates.filter(u => u.idProduct).length;
@@ -1148,7 +1188,7 @@ btnAnalyze.addEventListener('click', async () => {
   const itemsToFetch = updates.filter(u => u.userEdited);
   const fetchCount = itemsToFetch.length;
   if (fetchCount === 0) {
-    ulog(`Keine Cardmarket-Fetches nötig (0 user-edits). Nichts zu tun.`, 'ok');
+    ulog(tl(`Keine Cardmarket-Fetches nötig (0 user-edits). Nichts zu tun.`, `No Cardmarket fetches needed (0 user edits). Nothing to do.`), 'ok');
     btnUpdate.style.display = 'none';
     if (!updatePreviewEl.querySelector('.warn')) {
       updatePreviewEl.innerHTML = `<div class="warn" style="background:#1e3a8a;color:#bfdbfe">ℹ Keine Edits in CSV erkannt. Bearbeite <code>Price_EUR</code> oder <code>Comments</code> und re-analysiere.</div>`;

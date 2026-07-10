@@ -6,6 +6,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), version
 
 ---
 
+## [2.2.6] — 2026-07-11
+
+Critical fix: Cardmarket changed their stock-page markup — the extension could no longer read the `ArticleID`, which broke Bulk-Update for everyone. Reported in [#1](https://github.com/LUPZN/cardmarket-stock-exporter/issues/1).
+
+### Fixed
+
+- **ArticleID extraction rewritten for Cardmarket's current markup.** Cardmarket removed the `id="articleRow<id>"` attribute (rows are now `stockRow<id>` and several CSS classes are obfuscated), so every export produced an **empty `ArticleID` column** — and Bulk-Update rejected every row as *"invalid (missing ID)"* before it ever checked your `Price_EUR`/`Comments` edits (hence the confusing "0 user-edits"). `parseRow` now resolves the article ID from, in order: (1) the edit-pencil link's `data-modal="…Article_EditArticleModal?…idArticle=X"`, (2) the amount input's `name="groupCountAmount<id>"`, (3) the row's `onclick`/`stockRow<id>` blob, (4) legacy `articleRow<id>` fallback. Triple-redundant, so a single future markup tweak won't break it again.
+- Stock Export and Bulk-Update both work again with no workflow change — just re-export once with this version.
+
+### Changed
+
+- **Bulk-Update log/status messages now follow the selected UI language.** On an English UI the core analyze-phase messages (CSV read, price comparison, skip-fetch summary, "no edits detected", "X rows invalid", "nothing to do", wrong-CSV/column errors, etc.) were still shown in German — confusing for non-German users (also surfaced via #1). Added a lightweight inline bilingual helper (`tl()`) driven by the current UI locale.
+
+### Notes
+
+- Only the ID extraction was affected; card name, price, `idProduct`, condition, language etc. were always read correctly, so **Want-Lists and the CSV structure are unchanged**.
+- Remaining verbose Export/Want-Lists log lines are still German-only and will be localized in v2.2.7.
+
+---
+
 ## [2.2.5] — 2026-05-06
 
 Codebase audit + variant-flag preservation hardening.
