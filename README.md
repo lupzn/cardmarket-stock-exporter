@@ -5,8 +5,12 @@
 </p>
 
 <p align="center">
-  <b>Export your complete Cardmarket inventory to CSV — and bulk-update prices via CSV import.</b><br>
-  Supports 8 TCG games, 5 languages. Bypasses the 300-entry pagination limit.
+  <b>Export your complete Cardmarket stock &amp; wantlists to CSV — and bulk-update prices &amp; comments via CSV import.</b><br>
+  8 TCG games · German/English UI · Fast Mode (~10×) · bypasses the 300-entry pagination limit.
+</p>
+
+<p align="center">
+  <sub>✅ v2.2.6 — compatible with Cardmarket's current stock-page layout (fixes the empty-ArticleID / "0 edits detected" Bulk-Update issue). Just re-export once.</sub>
 </p>
 
 <p align="center">
@@ -60,8 +64,9 @@ Tested on collections with **19,000+ cards**. Works reliably.
 - **Bulk-Delete via CSV** — edit CSV, set `delete=Y` on entries to remove, re-upload. Dry-Run on by default. Use case: cleaning up years of stale "still want this" entries after you've bought them.
 
 ### 🔧 Quality of Life
+- 🌐 **German / English UI** *(v2.2)* — auto-detected from your browser language, plus a manual toggle (Auto / 🇩🇪 DE / 🇬🇧 EN) in the popup. Bulk-Update status messages follow the selected UI language *(v2.2.6)*.
 - 📌 **Pin to window** — detach popup so it stays open during long operations
-- 🌍 Auto-detect language + game from current tab
+- 🌍 Auto-detect card language + game from current tab
 - **CSV header metadata** *(new in v2.1)* — files start with a `# CMSE-META | ...` line carrying export timestamp + locale + game + tool version. Used for tab-mismatch + stale-export detection.
 
 ## 📋 CSV Columns (Stock Export)
