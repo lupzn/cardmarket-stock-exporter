@@ -36,6 +36,12 @@
   "opt_sortby": { "message": "sortBy=name_asc" },
   "opt_per_expansion": { "message": "Iterate per expansion (required for >300)" },
   "btn_run_export": { "message": "Start full export" },
+  "set_export_hint": { "message": "Or export specific sets from your stock:" },
+  "btn_load_sets": { "message": "Load my sets" },
+  "btn_load_sets_running": { "message": "Loading sets…" },
+  "btn_export_sets": { "message": "Export selected sets ($COUNT$)", "placeholders": { "count": { "content": "$1", "example": "3" } } },
+  "log_no_sets_found": { "message": "No sets found. Open a stock page that has cards." },
+  "log_sets_loaded": { "message": "$N$ sets loaded. Tick the ones you want, then click \"Export selected sets\".", "placeholders": { "n": { "content": "$1", "example": "12" } } },
   "btn_abort": { "message": "Abort" },
   "hint_keep_open": { "message": "⚠ Keep popup open during export — or click <b>📌 Pin</b>" },
 

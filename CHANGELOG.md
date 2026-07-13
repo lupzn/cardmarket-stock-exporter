@@ -6,6 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), version
 
 ---
 
+## [2.2.7] — 2026-07-13
+
+Export gains targeted set selection, and the remaining German-only log lines are now localized.
+
+### Added
+
+- **Targeted set export.** A new "Load my sets" section on the Export tab reads the expansions you actually hold in stock (from Cardmarket's `idExpansion` filter), lists them as checkboxes with a per-set card count, and lets you export only the sets you tick — instead of the whole stock. Counts come from Cardmarket's filter labels when present, otherwise from a light per-set page-1 scan (shown with a `~` when estimated). Partial exports get a filename marker (`…-Pokemon-v2.2.7-3sets.csv`, or the set name for a single set). The existing "Start full export" flow is unchanged, and a targeted run never falls back to a full export.
+
+### Changed
+
+- **All Bulk-Update and Want-Lists log/status messages now follow the selected UI language.** v2.2.6 localized the core analyze-phase lines; this release covers the rest — fetch/preview progress, Slow-Mode/Cloudflare guidance, comment-update warnings, diagnostics, recovery, "update done", and the entire Want-Lists tab. On an English UI the logs are now English throughout (~74 message strings via the `tl()` helper).
+
+---
+
 ## [2.2.6] — 2026-07-11
 
 Critical fix: Cardmarket changed their stock-page markup — the extension could no longer read the `ArticleID`, which broke Bulk-Update for everyone. Reported in [#1](https://github.com/LUPZN/cardmarket-stock-exporter/issues/1).

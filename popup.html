@@ -134,6 +134,20 @@
 <button id="run" data-i18n="btn_run_export">Vollständigen Export starten</button>
 <button id="abort" class="secondary" style="background:#dc2626;display:none" data-i18n="btn_abort">Abbrechen</button>
 
+<!-- v2.2.7: Gezielter Set-Export -->
+<div id="setExportBox" style="margin-top:10px;padding:8px;background:#0f0f0f;border:1px solid #444;border-radius:3px">
+  <div style="font-size:11px;color:#ccc;margin-bottom:6px" data-i18n="set_export_hint">Oder gezielt einzelne Sets aus deinem Bestand exportieren:</div>
+  <button id="btnLoadSets" class="secondary" data-i18n="btn_load_sets">Meine Sets laden</button>
+  <div id="setExportList" style="display:none;max-height:260px;overflow-y:auto;font-size:11px;margin-top:6px;border:1px solid #333;border-radius:3px"></div>
+  <div id="setExportControls" style="display:none;margin-top:6px">
+    <div style="display:flex;gap:6px;font-size:10px;margin-bottom:6px">
+      <a href="#" id="setExportAll" style="color:#2563eb" data-i18n="set_filter_all">Alle</a> ·
+      <a href="#" id="setExportNone" style="color:#888" data-i18n="set_filter_none">Keine</a>
+    </div>
+    <button id="btnExportSets" disabled style="background:#2563eb">Nur gewählte Sets exportieren (0)</button>
+  </div>
+</div>
+
 <div id="progress" style="display:none;margin-top:8px;padding:8px;background:#0f0f0f;border-radius:3px;font-size:11px;font-family:monospace;border:1px solid #2563eb">
   <div id="progBar" style="height:4px;background:#222;border-radius:2px;overflow:hidden;margin-bottom:6px">
     <div id="progFill" style="height:100%;width:0%;background:#2563eb;transition:width .3s"></div>

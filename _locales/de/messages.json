@@ -36,6 +36,12 @@
   "opt_sortby": { "message": "sortBy=name_asc" },
   "opt_per_expansion": { "message": "Pro Erweiterung iterieren (nötig für >300)" },
   "btn_run_export": { "message": "Vollständigen Export starten" },
+  "set_export_hint": { "message": "Oder gezielt einzelne Sets aus deinem Bestand exportieren:" },
+  "btn_load_sets": { "message": "Meine Sets laden" },
+  "btn_load_sets_running": { "message": "Sets werden geladen…" },
+  "btn_export_sets": { "message": "Nur gewählte Sets exportieren ($COUNT$)", "placeholders": { "count": { "content": "$1", "example": "3" } } },
+  "log_no_sets_found": { "message": "Keine Sets gefunden. Öffne eine Stock-Seite mit Bestand." },
+  "log_sets_loaded": { "message": "$N$ Sets geladen. Wähle die gewünschten aus + klicke „Nur gewählte Sets exportieren“.", "placeholders": { "n": { "content": "$1", "example": "12" } } },
   "btn_abort": { "message": "Abbrechen" },
   "hint_keep_open": { "message": "⚠ Popup offen lassen während Export — oder <b>📌 Pin</b> klicken" },
 

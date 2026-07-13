@@ -12,6 +12,13 @@ const progressEl = document.getElementById('progress');
 const progFillEl = document.getElementById('progFill');
 const progTextEl = document.getElementById('progText');
 const keepOpenHintEl = document.getElementById('keepOpenHint');
+// v2.2.7: gezielter Set-Export
+const btnLoadSets = document.getElementById('btnLoadSets');
+const setExportList = document.getElementById('setExportList');
+const setExportControls = document.getElementById('setExportControls');
+const setExportAll = document.getElementById('setExportAll');
+const setExportNone = document.getElementById('setExportNone');
+const btnExportSets = document.getElementById('btnExportSets');
 
 // v2.2: i18n shorthand
 const t = (key, vars) => (window.i18n ? window.i18n.getMsg(key, vars || []) : key);
@@ -154,8 +161,93 @@ function buildBasePath() {
 
 btnRun.addEventListener('click', () => runExport(parseInt(maxPagesEl.value, 10) || 0));
 
-async function runExport(maxPages) {
+// ---- v2.2.7: Gezielter Set-Export ----
+const escSetHtml = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function updateExportSetsBtn() {
+  if (!btnExportSets || !setExportList) return;
+  const n = setExportList.querySelectorAll('input[type="checkbox"]:checked').length;
+  btnExportSets.textContent = t('btn_export_sets', [n]);
+  btnExportSets.disabled = n === 0;
+}
+
+function renderSetPicker(sets) {
+  if (!sets || sets.length === 0) {
+    setExportList.style.display = 'none';
+    setExportControls.style.display = 'none';
+    log(t('log_no_sets_found'), 'err');
+    return;
+  }
+  const header = `<div style="display:flex;align-items:center;gap:6px;padding:3px 5px;font-size:9px;color:#888;border-bottom:1px solid #444;font-weight:600;position:sticky;top:0;background:#0f0f0f">
+      <span style="width:14px"></span>
+      <span style="flex:1">SET</span>
+      <span style="min-width:60px;text-align:right">KARTEN</span>
+    </div>`;
+  const rowsHtml = sets.map(s => {
+    const safeId = 'setx_' + String(s.id).replace(/[^a-zA-Z0-9]/g, '_');
+    const countTxt = (s.approx ? '~' : '') + (s.count != null ? s.count : '?');
+    return `<label style="display:flex;align-items:center;gap:6px;padding:3px 5px;margin:0;border-bottom:1px solid #1a1a1a;cursor:pointer">
+      <input type="checkbox" id="${safeId}" data-set-id="${escSetHtml(s.id)}" data-set-name="${escSetHtml(s.name)}" style="width:14px;height:14px;flex-shrink:0">
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escSetHtml(s.name)}</span>
+      <span style="color:#fbbf24;font-weight:600;min-width:60px;text-align:right;font-size:12px">${countTxt}</span>
+    </label>`;
+  }).join('');
+  setExportList.innerHTML = header + rowsHtml;
+  setExportList.style.display = 'block';
+  setExportControls.style.display = 'block';
+  setExportList.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.addEventListener('change', updateExportSetsBtn));
+  updateExportSetsBtn();
+  log(t('log_sets_loaded', [sets.length]), 'ok');
+}
+
+async function loadStockSets() {
+  if (!btnLoadSets) return;
+  btnLoadSets.disabled = true;
+  const orig = btnLoadSets.textContent;
+  btnLoadSets.textContent = t('btn_load_sets_running');
+  try {
+    const tab = await getTargetTab();
+    if (!tab || !/cardmarket\.com/.test(tab.url || '')) { log(t('log_no_cm_tab'), 'err'); return; }
+    const basePath = buildBasePath();
+    const useSortBy = useSortByEl.checked;
+    const cardLangIds = getSelectedCardLangIds();
+    const delay = parseInt(delayEl.value, 10) || 0;
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => { window.__cmExportStop = false; },
+    });
+    const [{ result }] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      args: [{ mode: 'listSets', maxPages: 0, delay, basePath, useSortBy, perExpansion: true, cardLangIds }],
+      func: injectedScrapeAll,
+    });
+    if (!result || result.error) { log(t('log_error', [result?.error || 'no result']), 'err'); return; }
+    renderSetPicker(result.sets || []);
+  } catch (e) {
+    log(t('log_exception', [e.message]), 'err');
+    console.error(e);
+  } finally {
+    btnLoadSets.disabled = false;
+    btnLoadSets.textContent = orig;
+  }
+}
+
+if (btnLoadSets) btnLoadSets.addEventListener('click', loadStockSets);
+if (setExportAll) setExportAll.addEventListener('click', (e) => { e.preventDefault(); setExportList.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true); updateExportSetsBtn(); });
+if (setExportNone) setExportNone.addEventListener('click', (e) => { e.preventDefault(); setExportList.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false); updateExportSetsBtn(); });
+if (btnExportSets) btnExportSets.addEventListener('click', () => {
+  const checked = [...setExportList.querySelectorAll('input[type="checkbox"]:checked')];
+  const selectedSets = checked.map(cb => ({ id: cb.getAttribute('data-set-id'), name: cb.getAttribute('data-set-name') }));
+  if (selectedSets.length === 0) return;
+  runExport(0, { selectedSets });
+});
+
+async function runExport(maxPages, opts = {}) {
+  const selectedSets = opts.selectedSets || null;
+  const selectedExpansionIds = selectedSets ? selectedSets.map(s => String(s.id)) : null;
   btnRun.disabled = true;
+  if (btnExportSets) btnExportSets.disabled = true;
+  if (btnLoadSets) btnLoadSets.disabled = true;
   abortBtn.style.display = 'block';
   progressEl.style.display = 'block';
   progTextEl.textContent = t('progress_starting');
@@ -171,7 +263,7 @@ async function runExport(maxPages) {
     const delay = parseInt(delayEl.value, 10) || 0;
     const basePath = buildBasePath();
     const useSortBy = useSortByEl.checked;
-    const perExpansion = perExpansionEl.checked && maxPages !== 1;
+    const perExpansion = selectedExpansionIds ? true : (perExpansionEl.checked && maxPages !== 1);
     // v2.1: Karten-Sprachen-Filter (multi-select)
     const cardLangIds = getSelectedCardLangIds();
     const langFilterMsg = cardLangIds.length > 0 ? t('log_card_langs', [cardLangIds.join(',')]) : '';
@@ -201,7 +293,7 @@ async function runExport(maxPages) {
 
     const [{ result }] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      args: [{ maxPages, delay, basePath, useSortBy, perExpansion, cardLangIds }],
+      args: [{ maxPages, delay, basePath, useSortBy, perExpansion, cardLangIds, selectedExpansionIds }],
       func: injectedScrapeAll,
     });
 
@@ -250,7 +342,16 @@ async function runExport(maxPages) {
     reader.onload = async () => {
       // v2.1: Metadata im Dateinamen statt im CSV-Body (Excel mangelt CSV-Comments beim Re-Save)
       // Pattern: cardmarket-stock-{date}-{lang}-{game}-v{version}.csv
-      const fname = `cardmarket-stock-${new Date().toISOString().slice(0, 10)}-${meta.lang}-${meta.game}-v${meta.toolVersion}.csv`;
+      let setMarker = '';
+      if (selectedSets && selectedSets.length) {
+        if (selectedSets.length === 1) {
+          const slug = String(selectedSets[0].name || 'set').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+          setMarker = '-' + (slug || 'set');
+        } else {
+          setMarker = `-${selectedSets.length}sets`;
+        }
+      }
+      const fname = `cardmarket-stock-${new Date().toISOString().slice(0, 10)}-${meta.lang}-${meta.game}-v${meta.toolVersion}${setMarker}.csv`;
       try {
         await chrome.downloads.download({ url: reader.result, filename: fname, saveAs: true });
         log(t('log_download', [fname]), 'ok');
@@ -266,6 +367,8 @@ async function runExport(maxPages) {
   } finally {
     if (pollTimer) clearInterval(pollTimer);
     btnRun.disabled = false;
+    if (btnLoadSets) btnLoadSets.disabled = false;
+    if (btnExportSets) updateExportSetsBtn();
     abortBtn.style.display = 'none';
   }
 }
@@ -340,7 +443,7 @@ function buildCsv(rows, meta = {}) {
 // parseRow is duplicated inside each to avoid cross-context issues.
 // ================================================================
 
-async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpansion, cardLangIds }) {
+async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpansion, cardLangIds, mode, selectedExpansionIds }) {
   function parseRow(el) {
     const row = {};
     // v2.2.6: Cardmarket entfernte id="articleRow123" (Row heisst jetzt stockRow<id>,
@@ -715,13 +818,51 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
     if (select) {
       select.querySelectorAll('option').forEach(o => {
         const v = o.value;
-        if (v && /^\d+$/.test(v) && v !== '0') ids.push({ id: v, name: o.textContent.trim() });
+        if (v && /^\d+$/.test(v) && v !== '0') {
+          // v2.2.7: Kartenzahl aus Label parsen falls CM sie liefert (z.B. "Ascended Heroes (9)")
+          let name = o.textContent.trim();
+          let labelCount = null;
+          const cm = name.match(/\((\d+)\)\s*$/);
+          if (cm) { labelCount = parseInt(cm[1], 10); name = name.replace(/\s*\(\d+\)\s*$/, '').trim(); }
+          ids.push({ id: v, name, labelCount });
+        }
       });
     }
     return ids;
   };
 
   try {
+    // v2.2.7: listSets-Modus — nur Bestands-Sets + Kartenzahl ermitteln, kein Voll-Scrape
+    if (mode === 'listSets') {
+      const listLangId = (cardLangIds && cardLangIds.length === 1) ? cardLangIds[0] : null;
+      const listBase = listLangId ? { idLanguage: listLangId } : {};
+      const exps = await extractExpansionIds();
+      const out = [];
+      for (const e of exps) {
+        if (window.__cmExportStop) break;
+        let count = (e.labelCount != null) ? e.labelCount : null;
+        let approx = false;
+        if (count == null) {
+          // Kein Label-Count → Page-1-Fetch, Kartenzahl aus Zeilen × Seitenanzahl schätzen
+          try {
+            const { res } = await fetchPage(1, { ...listBase, idExpansion: e.id });
+            if (res.ok) {
+              const html = await res.text();
+              const doc = new DOMParser().parseFromString(html, 'text/html');
+              const rowEls = doc.querySelectorAll('[id^="articleRow"].article-row, .article-row');
+              let maxP = 1;
+              doc.querySelectorAll('a[href*="site="]').forEach(a => { const mm = (a.getAttribute('href') || '').match(/[?&]site=(\d+)/); if (mm) maxP = Math.max(maxP, parseInt(mm[1], 10)); });
+              count = maxP > 1 ? rowEls.length * maxP : rowEls.length;
+              approx = maxP > 1;
+            }
+          } catch (ce) { /* count-fetch fehlgeschlagen → count bleibt null */ }
+          if (delay) await sleep(delay);
+        }
+        out.push({ id: e.id, name: e.name, count, approx });
+      }
+      return { sets: out };
+    }
+
     // v2.1: Karten-Sprachen-Filter — wenn Auswahl, iteriere pro langId mit idLanguage-Filter im Base-Filter
     // Leerer Array = kein Filter (alle Sprachen, normales Verhalten)
     const langLoop = (cardLangIds && cardLangIds.length > 0) ? cardLangIds : [null];
@@ -736,11 +877,21 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
 
       if (perExpansion) {
         writeProgress({ status: 'extracting expansions' + langTag, page: 0 });
-        const expansions = await extractExpansionIds();
+        let expansions = await extractExpansionIds();
+        // v2.2.7: nur die im Export-Tab angehakten Sets exportieren (falls Auswahl übergeben)
+        if (selectedExpansionIds && selectedExpansionIds.length) {
+          const wanted = new Set(selectedExpansionIds.map(String));
+          expansions = expansions.filter(e => wanted.has(String(e.id)));
+        }
         console.log(`[CM] Gefundene Expansions${langTag}: ${expansions.length}`);
         if (expansions.length === 0) {
-          console.warn('[CM] Keine Expansion-IDs, fallback');
-          await scrapeWithCascade(langBaseFilter, 'ALL' + langTag, 1, 1, 'ALL');
+          // v2.2.7: bei gezielter Set-Auswahl NIEMALS auf ALL zurückfallen (sonst versehentlich Voll-Export)
+          if (selectedExpansionIds && selectedExpansionIds.length) {
+            console.warn('[CM] Gewählte Sets nicht im Dropdown gefunden — kein Fallback auf Voll-Export.');
+          } else {
+            console.warn('[CM] Keine Expansion-IDs, fallback');
+            await scrapeWithCascade(langBaseFilter, 'ALL' + langTag, 1, 1, 'ALL');
+          }
         } else {
           for (let i = 0; i < expansions.length; i++) {
             if (window.__cmExportStop) break;
@@ -961,7 +1112,7 @@ btnAnalyze.addEventListener('click', async () => {
       const ageMs = Date.now() - new Date(meta.exported).getTime();
       const ageH = ageMs / 3600000;
       if (ageH > 24) {
-        ulog(`⚠ CSV ist ${Math.round(ageH)}h alt — empfohlen: vor Bulk-Update neu exportieren (idArticle-Drift möglich)`, 'err');
+        ulog(tl(`⚠ CSV ist ${Math.round(ageH)}h alt — empfohlen: vor Bulk-Update neu exportieren (idArticle-Drift möglich)`, `⚠ CSV is ${Math.round(ageH)}h old — recommended: re-export before bulk-update (idArticle drift possible)`), 'err');
       }
     }
   }
@@ -982,7 +1133,7 @@ btnAnalyze.addEventListener('click', async () => {
     const langMismatch = meta.lang && tabLang && meta.lang !== tabLang;
     const gameMismatch = meta.game && tabGame && meta.game !== tabGame;
     if (langMismatch || gameMismatch) {
-      const msg = `⚠ Tab-Mismatch: CSV exportiert aus ${meta.lang || '?'}/${meta.game || '?'}, aktive Tab ist ${tabLang}/${tabGame}. Bulk-Update wird wahrscheinlich für alle IDs fehlschlagen. Auf passenden Tab wechseln und nochmal "CSV analysieren" klicken.`;
+      const msg = tl(`⚠ Tab-Mismatch: CSV exportiert aus ${meta.lang || '?'}/${meta.game || '?'}, aktive Tab ist ${tabLang}/${tabGame}. Bulk-Update wird wahrscheinlich für alle IDs fehlschlagen. Auf passenden Tab wechseln und nochmal "CSV analysieren" klicken.`, `⚠ Tab mismatch: CSV was exported from ${meta.lang || '?'}/${meta.game || '?'}, but the active tab is ${tabLang}/${tabGame}. Bulk-update will likely fail for all IDs. Switch to the matching tab and click "Analyze CSV" again.`);
       ulog(msg, 'err');
       if (!confirm(msg + '\n\nTrotzdem fortsetzen?')) return;
     }
@@ -1062,7 +1213,7 @@ btnAnalyze.addEventListener('click', async () => {
   // v2.1: Delete-Summary
   const deleteCount = updates.filter(u => u.wantsDelete).length;
   if (deleteCount > 0) {
-    ulog(`🗑 ${deleteCount} Listings markiert zum LÖSCHEN (Spalte delete=Y). Werden im Apply-Schritt komplett von Cardmarket entfernt.`, 'err');
+    ulog(tl(`🗑 ${deleteCount} Listings markiert zum LÖSCHEN (Spalte delete=Y). Werden im Apply-Schritt komplett von Cardmarket entfernt.`, `🗑 ${deleteCount} listings marked for DELETION (column delete=Y). They will be fully removed from Cardmarket in the apply step.`), 'err');
   }
 
   // v2.1 Skip-Fetch summary
@@ -1073,8 +1224,8 @@ btnAnalyze.addEventListener('click', async () => {
             `✓ Skip-fetch active: ${editedCount} rows edited by you, ${skipCount} unchanged (NOT fetched from Cardmarket → no CF load)`), 'ok');
     // v2.2.1: warn loud if user has comment-edits but toggle is OFF (silent-skip = bug-source)
     if (silentCommentSkips > 0) {
-      ulog(`⚠ ${silentCommentSkips} Zeilen haben geänderte Comments ABER "Comments mit-updaten"-Toggle ist AUS → diese Edits werden IGNORIERT.`, 'err');
-      ulog(`   → Toggle "Comments mit-updaten" oben aktivieren UND nochmal "CSV analysieren + Preview" klicken, um Comments-Updates anzuwenden.`, 'err');
+      ulog(tl(`⚠ ${silentCommentSkips} Zeilen haben geänderte Comments ABER "Comments mit-updaten"-Toggle ist AUS → diese Edits werden IGNORIERT.`, `⚠ ${silentCommentSkips} rows have changed comments BUT the "Update comments too" toggle is OFF → these edits are IGNORED.`), 'err');
+      ulog(tl(`   → Toggle "Comments mit-updaten" oben aktivieren UND nochmal "CSV analysieren + Preview" klicken, um Comments-Updates anzuwenden.`, `   → Enable the "Update comments too" toggle above AND click "Analyze CSV + Preview" again to apply comment updates.`), 'err');
       for (const s of silentCommentSkipSamples) {
         ulog(`   • ${s.articleId} (${s.expansion}): "${s.refCom}" → "${s.csvCom}"`, 'err');
       }
@@ -1096,13 +1247,13 @@ btnAnalyze.addEventListener('click', async () => {
 
   if (invalid > 0) ulog(tl(`⚠ ${invalid} Zeilen ungültig (fehlende ID/Preis)`, `⚠ ${invalid} rows invalid (missing ID/price)`), 'err');
   const recovered = rows.filter(r => r._articleIdRecovered).length;
-  if (recovered > 0) ulog(`ℹ ${recovered} ArticleIDs aus Scientific-Notation wiederhergestellt (Excel-Bug)`, 'ok');
+  if (recovered > 0) ulog(tl(`ℹ ${recovered} ArticleIDs aus Scientific-Notation wiederhergestellt (Excel-Bug)`, `ℹ ${recovered} ArticleIDs recovered from scientific notation (Excel bug)`), 'ok');
   const idProductCount = updates.filter(u => u.idProduct).length;
   const idProductCoverage = updates.length ? (idProductCount / updates.length * 100).toFixed(0) : 0;
   if (idProductCount > 0) {
-    ulog(`ℹ idProduct in ${idProductCount}/${updates.length} Zeilen (${idProductCoverage}%) — Auto-Rebind aktiv für 404er`, 'ok');
+    ulog(tl(`ℹ idProduct in ${idProductCount}/${updates.length} Zeilen (${idProductCoverage}%) — Auto-Rebind aktiv für 404er`, `ℹ idProduct in ${idProductCount}/${updates.length} rows (${idProductCoverage}%) — auto-rebind active for 404s`), 'ok');
   } else if (updates.length > 0) {
-    ulog(`⚠ Keine idProduct-Spalte in CSV — Auto-Rebind nicht möglich. Re-export mit v2.1+ empfohlen.`, 'err');
+    ulog(tl(`⚠ Keine idProduct-Spalte in CSV — Auto-Rebind nicht möglich. Re-export mit v2.1+ empfohlen.`, `⚠ No idProduct column in CSV — auto-rebind not possible. Re-export with v2.1+ recommended.`), 'err');
   }
 
   // v2.1: Erweiterte Fetch-Funktion — fetched current prices, mit idArticle-Auto-Rebind via idProduct-Match bei 404
@@ -1153,7 +1304,7 @@ btnAnalyze.addEventListener('click', async () => {
     preFetchContainer.style.display = 'block';
 
     // Wait for user to confirm selection — show "Fetch starten" button + wait for it
-    ulog(`📋 ${userEditedUpdates.length} edits in ${Object.keys(preFetchSetGroups).length} Sets erkannt. Wähle Sets aus + klicke "Fetch + Preview starten".`, 'ok');
+    ulog(tl(`📋 ${userEditedUpdates.length} edits in ${Object.keys(preFetchSetGroups).length} Sets erkannt. Wähle Sets aus + klicke "Fetch + Preview starten".`, `📋 ${userEditedUpdates.length} edits detected across ${Object.keys(preFetchSetGroups).length} sets. Select sets + click "Start fetch + preview".`), 'ok');
 
     // Inject confirm-button after the set-filter
     if (!document.getElementById('btnConfirmSets')) {
@@ -1180,7 +1331,7 @@ btnAnalyze.addEventListener('click', async () => {
         }
       }
       const skipped = updates.filter(u => u._setFilterSkipped).length;
-      ulog(`Set-Filter: ${selectedPre.size}/${Object.keys(preFetchSetGroups).length} Sets gewählt. ${userEditedUpdates.length - skipped} Items werden gefetched (${skipped} sets-skipped).`, 'ok');
+      ulog(tl(`Set-Filter: ${selectedPre.size}/${Object.keys(preFetchSetGroups).length} Sets gewählt. ${userEditedUpdates.length - skipped} Items werden gefetched (${skipped} sets-skipped).`, `Set filter: ${selectedPre.size}/${Object.keys(preFetchSetGroups).length} sets selected. ${userEditedUpdates.length - skipped} items will be fetched (${skipped} sets skipped).`), 'ok');
     }
   }
 
@@ -1196,10 +1347,10 @@ btnAnalyze.addEventListener('click', async () => {
     return;
   }
   if (isSlowMode) {
-    ulog(`🐢 Slow Mode aktiv: ~1 Request/2s. Geschätzte Dauer: ~${Math.round(fetchCount * 2 / 60)} min für ${fetchCount} Items.`, 'ok');
+    ulog(tl(`🐢 Slow Mode aktiv: ~1 Request/2s. Geschätzte Dauer: ~${Math.round(fetchCount * 2 / 60)} min für ${fetchCount} Items.`, `🐢 Slow Mode active: ~1 request/2s. Estimated time: ~${Math.round(fetchCount * 2 / 60)} min for ${fetchCount} items.`), 'ok');
   }
   if (fetchCount > 500 && !isSlowMode) {
-    ulog(`⚠ ${fetchCount} Items ohne Slow Mode — Cloudflare könnte aggressiv blocken. Bei vielen "not-found" → Slow Mode aktivieren + retry.`, 'err');
+    ulog(tl(`⚠ ${fetchCount} Items ohne Slow Mode — Cloudflare könnte aggressiv blocken. Bei vielen "not-found" → Slow Mode aktivieren + retry.`, `⚠ ${fetchCount} items without Slow Mode — Cloudflare may block aggressively. If many "not-found" → enable Slow Mode + retry.`), 'err');
   }
   let [{ result: fetchResult }] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
@@ -1462,11 +1613,11 @@ btnAnalyze.addEventListener('click', async () => {
 
   // v2.1: defensive check — wenn injected fetch silent failed, fetchResult ist undefined
   if (!fetchResult || typeof fetchResult !== 'object') {
-    ulog('❌ Preview-Fetch lieferte kein Ergebnis. Mögliche Ursachen:', 'err');
-    ulog('  • Cardmarket-Tab ist nicht offen oder navigierte weg', 'err');
-    ulog('  • Login-Session abgelaufen', 'err');
-    ulog('  • Extension wurde nicht reloaded nach Update', 'err');
-    ulog('Fix: Cardmarket-Tab refreshen + chrome://extensions/ → Reload bei Stock Exporter + retry.', 'err');
+    ulog(tl('❌ Preview-Fetch lieferte kein Ergebnis. Mögliche Ursachen:', '❌ Preview fetch returned no result. Possible causes:'), 'err');
+    ulog(tl('  • Cardmarket-Tab ist nicht offen oder navigierte weg', '  • The Cardmarket tab is not open or navigated away'), 'err');
+    ulog(tl('  • Login-Session abgelaufen', '  • Login session expired'), 'err');
+    ulog(tl('  • Extension wurde nicht reloaded nach Update', '  • The extension was not reloaded after updating'), 'err');
+    ulog(tl('Fix: Cardmarket-Tab refreshen + chrome://extensions/ → Reload bei Stock Exporter + retry.', 'Fix: refresh the Cardmarket tab + chrome://extensions/ → reload Stock Exporter + retry.'), 'err');
     return;
   }
 
@@ -1479,19 +1630,19 @@ btnAnalyze.addEventListener('click', async () => {
       func: () => window.__cmUpdateProgress || null,
     });
     if (progressAfter?.cfCascadeAbort) {
-      ulog('🛑 CLOUDFLARE-BLOCKADE erkannt — Run abgebrochen.', 'err');
-      ulog(`Letzter Status: ${progressAfter.lastErr || 'unknown'}`, 'err');
-      ulog('Maßnahmen:', 'err');
-      ulog('  1. Cardmarket-Tab schließen, ALLE Tabs', 'err');
-      ulog('  2. 10-15 min warten — IP-Reputation regeneriert sich', 'err');
-      ulog('  3. Browser-Cookies für cardmarket.com löschen (chrome://settings/cookies/...)', 'err');
-      ulog('  4. Neu einloggen', 'err');
-      ulog('  5. Bulk-Update mit 🐢 Slow Mode aktiviert nochmal versuchen', 'err');
+      ulog(tl('🛑 CLOUDFLARE-BLOCKADE erkannt — Run abgebrochen.', '🛑 CLOUDFLARE BLOCK detected — run aborted.'), 'err');
+      ulog(tl(`Letzter Status: ${progressAfter.lastErr || 'unknown'}`, `Last status: ${progressAfter.lastErr || 'unknown'}`), 'err');
+      ulog(tl('Maßnahmen:', 'Steps:'), 'err');
+      ulog(tl('  1. Cardmarket-Tab schließen, ALLE Tabs', '  1. Close the Cardmarket tab, ALL tabs'), 'err');
+      ulog(tl('  2. 10-15 min warten — IP-Reputation regeneriert sich', '  2. Wait 10-15 min — IP reputation recovers'), 'err');
+      ulog(tl('  3. Browser-Cookies für cardmarket.com löschen (chrome://settings/cookies/...)', '  3. Clear browser cookies for cardmarket.com (chrome://settings/cookies/...)'), 'err');
+      ulog(tl('  4. Neu einloggen', '  4. Log in again'), 'err');
+      ulog(tl('  5. Bulk-Update mit 🐢 Slow Mode aktiviert nochmal versuchen', '  5. Retry bulk-update with 🐢 Slow Mode enabled'), 'err');
       return;
     }
     if (progressAfter?.sessionExpired) {
-      ulog('🔐 Login-Session abgelaufen während Fetch.', 'err');
-      ulog('Cardmarket-Tab refreshen + neu einloggen + retry.', 'err');
+      ulog(tl('🔐 Login-Session abgelaufen während Fetch.', '🔐 Login session expired during fetch.'), 'err');
+      ulog(tl('Cardmarket-Tab refreshen + neu einloggen + retry.', 'Refresh the Cardmarket tab + log in again + retry.'), 'err');
       return;
     }
   } catch {}
@@ -1558,10 +1709,10 @@ btnAnalyze.addEventListener('click', async () => {
     preview.push(u);
   }
 
-  ulog(`${preview.length} Änderungen vorgemerkt, ${skipped} unverändert übersprungen`, 'ok');
-  if (rebindCount > 0) ulog(`✓ ${rebindCount} idArticles per idProduct-Match auto-rebound (CSV war veraltet)`, 'ok');
+  ulog(tl(`${preview.length} Änderungen vorgemerkt, ${skipped} unverändert übersprungen`, `${preview.length} changes queued, ${skipped} unchanged skipped`), 'ok');
+  if (rebindCount > 0) ulog(tl(`✓ ${rebindCount} idArticles per idProduct-Match auto-rebound (CSV war veraltet)`, `✓ ${rebindCount} idArticles auto-rebound via idProduct match (CSV was stale)`), 'ok');
   if (updateCommentsMode) {
-    ulog(`✏ Comments-Update aktiv: ${commentsChangedCount} Artikel haben abweichende Comments`, 'ok');
+    ulog(tl(`✏ Comments-Update aktiv: ${commentsChangedCount} Artikel haben abweichende Comments`, `✏ Comment update active: ${commentsChangedCount} articles have differing comments`), 'ok');
     // v2.1: Sicherheits-Warnung wenn Comments gelöscht werden würden (leere CSV-Zelle, alter CM-Wert nicht leer)
     const wouldClear = preview.filter(u => {
       if (!u.applyComments) return false;
@@ -1570,7 +1721,7 @@ btnAnalyze.addEventListener('click', async () => {
       return newC === '' && oldC !== '';
     }).length;
     if (wouldClear > 0) {
-      ulog(`⚠ ${wouldClear} Comments werden GELÖSCHT (CSV-Zelle leer, Cardmarket hatte Text). Falls ungewollt: CSV prüfen, leere Zellen mit Original-Text füllen.`, 'err');
+      ulog(tl(`⚠ ${wouldClear} Comments werden GELÖSCHT (CSV-Zelle leer, Cardmarket hatte Text). Falls ungewollt: CSV prüfen, leere Zellen mit Original-Text füllen.`, `⚠ ${wouldClear} comments will be DELETED (CSV cell empty, Cardmarket had text). If unintended: check the CSV, fill empty cells with the original text.`), 'err');
     }
   } else {
     const wouldChange = updates.filter(u => {
@@ -1578,7 +1729,7 @@ btnAnalyze.addEventListener('click', async () => {
       const oldC = (fetchResult[u.articleId]?.comments || '').trim();
       return newC !== oldC;
     }).length;
-    if (wouldChange > 0) ulog(`ℹ ${wouldChange} Artikel hätten Comments-Änderungen (Toggle "Comments mit-updaten" aktivieren um anzuwenden)`, 'ok');
+    if (wouldChange > 0) ulog(tl(`ℹ ${wouldChange} Artikel hätten Comments-Änderungen (Toggle "Comments mit-updaten" aktivieren um anzuwenden)`, `ℹ ${wouldChange} articles would have comment changes (enable the "Update comments too" toggle to apply)`), 'ok');
   }
 
   // v2.1: Sanity-Check — wenn >5% nicht gefunden trotz Rebind-Versuch → User warnen
@@ -1586,18 +1737,18 @@ btnAnalyze.addEventListener('click', async () => {
   if (notFoundFinal.length > 0 && updates.length > 0) {
     const pctNotFound = (notFoundFinal.length / updates.length * 100);
     if (pctNotFound > 5) {
-      const warn = `⚠ ${notFoundFinal.length} von ${updates.length} ArticleIDs (${pctNotFound.toFixed(0)}%) auch nach Rebind-Versuch nicht gefunden. Wahrscheinlich: CSV-Export ist veraltet, Listings wurden verkauft/gelöscht, oder idProduct-Spalte fehlt. Empfehlung: frisch exportieren.`;
+      const warn = tl(`⚠ ${notFoundFinal.length} von ${updates.length} ArticleIDs (${pctNotFound.toFixed(0)}%) auch nach Rebind-Versuch nicht gefunden. Wahrscheinlich: CSV-Export ist veraltet, Listings wurden verkauft/gelöscht, oder idProduct-Spalte fehlt. Empfehlung: frisch exportieren.`, `⚠ ${notFoundFinal.length} of ${updates.length} ArticleIDs (${pctNotFound.toFixed(0)}%) still not found even after the rebind attempt. Likely: the CSV export is stale, listings were sold/deleted, or the idProduct column is missing. Recommendation: export fresh.`);
       ulog(warn, 'err');
     }
   }
 
   // v2.2.3: surface modal-null diagnostic samples (collected during fetch when form-detection failed)
   if (modalNullSamples && modalNullSamples.length > 0) {
-    ulog(`🔬 v2.2.3 Diagnostic: ${modalNullSamples.length} Modal-Form Detection-Failure(s) (Sample HTML log to console):`, 'err');
+    ulog(tl(`🔬 v2.2.3 Diagnostic: ${modalNullSamples.length} Modal-Form Detection-Failure(s) (Sample HTML log to console):`, `🔬 v2.2.3 diagnostic: ${modalNullSamples.length} modal-form detection failure(s) (sample HTML logged to console):`), 'err');
     for (const s of modalNullSamples) {
       ulog(`   articleId=${s.articleId} hasForm=${s.hasForm} formIds=[${(s.formIds || []).join(', ')}] inputs=[${(s.inputNames || []).slice(0, 8).join(', ')}]`, 'err');
     }
-    ulog(`   → Vollständige HTML-Samples in Browser-Console (F12 auf CM-Tab) — bitte einen Sample posten für v2.2.4-fix.`, 'err');
+    ulog(tl(`   → Vollständige HTML-Samples in Browser-Console (F12 auf CM-Tab) — bitte einen Sample posten für v2.2.4-fix.`, `   → Full HTML samples in the browser console (F12 on the CM tab) — please post one sample for a v2.2.4 fix.`), 'err');
   }
 
   // v2.2.2: Per-Expansion status-breakdown — surfaces patterns like "Ergänzungen alle not-found"
@@ -1622,7 +1773,7 @@ btnAnalyze.addEventListener('click', async () => {
     .filter(([_, s]) => s.not_found > 0)
     .sort((a, b) => b[1].not_found - a[1].not_found);
   if (flaggedExps.length > 0) {
-    ulog(`📊 Per-Set Status-Breakdown (Sets mit not-found rows):`, 'err');
+    ulog(tl(`📊 Per-Set Status-Breakdown (Sets mit not-found rows):`, `📊 Per-set status breakdown (sets with not-found rows):`), 'err');
     for (const [exp, s] of flaggedExps.slice(0, 15)) {
       const total = s.ok + s.not_found + s.capped + s.delete + s.unchanged + s.other;
       const allNotFound = s.not_found === total;
@@ -1635,12 +1786,12 @@ btnAnalyze.addEventListener('click', async () => {
       return s.not_found === total && /erg[äa]nzung|ergänz|extension/i.test(exp);
     });
     if (extPatterns.length > 0) {
-      ulog(`🔍 Diagnostic: ${extPatterns.length} Erweiterungs-Set(s) komplett not-found. Sample articleIDs zur DevTools-Trace:`, 'err');
+      ulog(tl(`🔍 Diagnostic: ${extPatterns.length} Erweiterungs-Set(s) komplett not-found. Sample articleIDs zur DevTools-Trace:`, `🔍 Diagnostic: ${extPatterns.length} expansion set(s) completely not-found. Sample articleIDs for DevTools trace:`), 'err');
       const sampleNotFound = notFoundFinal.filter(u => extPatterns.some(([exp, _]) => u._expansion === exp)).slice(0, 3);
       for (const u of sampleNotFound) {
         ulog(`   articleId=${u.articleId} idProduct=${u.idProduct || '(leer)'} lang="${u.language}" cond="${u.condition}" exp="${u._expansion}"`, 'err');
       }
-      ulog(`   → Bitte einen dieser articleIds auf Cardmarket öffnen, edit-pencil klicken, in DevTools Network-Tab schauen welche URL die Modal-Form lädt. Schick die URL für v2.2.3-fix.`, 'err');
+      ulog(tl(`   → Bitte einen dieser articleIds auf Cardmarket öffnen, edit-pencil klicken, in DevTools Network-Tab schauen welche URL die Modal-Form lädt. Schick die URL für v2.2.3-fix.`, `   → Please open one of these articleIds on Cardmarket, click the edit pencil, and check the DevTools Network tab for which URL loads the modal form. Send the URL for a v2.2.3 fix.`), 'err');
     }
   }
 
@@ -1709,7 +1860,7 @@ btnAnalyze.addEventListener('click', async () => {
     if (notFoundFinal.length > 0) reasons.push(`${notFoundFinal.length} nicht gefunden`);
     if (capped.length > 0) reasons.push(`${capped.length} über Max-Änderung-% Cap`);
     const reasonStr = reasons.length ? ` (${reasons.join(', ')})` : '';
-    ulog(`ℹ Keine Änderungen zu schreiben${reasonStr}. Bearbeite Price_EUR oder Comments in CSV und re-analysiere.`, 'err');
+    ulog(tl(`ℹ Keine Änderungen zu schreiben${reasonStr}. Bearbeite Price_EUR oder Comments in CSV und re-analysiere.`, `ℹ No changes to write${reasonStr}. Edit Price_EUR or Comments in the CSV and re-analyze.`), 'err');
     // Preview-Banner ergänzen wenn nicht schon einer da
     if (!updatePreviewEl.querySelector('.warn')) {
       updatePreviewEl.innerHTML = `<div class="warn" style="background:#1e3a8a;color:#bfdbfe">ℹ Keine Änderungen zu schreiben${reasonStr}.<br><br>Bearbeite die <code>Price_EUR</code>- oder <code>Comments</code>-Spalte in deiner CSV (in Excel oder Texteditor), speichere, und klicke nochmal "CSV analysieren + Preview".</div>` + (updatePreviewEl.innerHTML || '');
@@ -1718,9 +1869,9 @@ btnAnalyze.addEventListener('click', async () => {
  } catch (topErr) {
   // v2.1: Defensive Top-Level — sonst würde Promise-Rejection silent sein und User sähe nur "hängt"
   console.error('[CM-Bulk] btnAnalyze top-level error:', topErr);
-  ulog('❌ Analyse fehlgeschlagen: ' + (topErr?.message || String(topErr)), 'err');
+  ulog(tl('❌ Analyse fehlgeschlagen: ', '❌ Analysis failed: ') + (topErr?.message || String(topErr)), 'err');
   ulog('Stack-Snippet: ' + ((topErr?.stack || '').slice(0, 300)), 'err');
-  ulog('Bitte F12 Console-Tab prüfen für Details. Cardmarket-Tab refreshen + retry.', 'err');
+  ulog(tl('Bitte F12 Console-Tab prüfen für Details. Cardmarket-Tab refreshen + retry.', 'Check the F12 Console tab for details. Refresh the Cardmarket tab + retry.'), 'err');
  }
 });
 
@@ -1732,8 +1883,8 @@ btnAbortUpdate.addEventListener('click', async () => {
       world: 'MAIN',
       func: () => { window.__cmUpdateStop = true; },
     });
-    ulog('Abbruch angefordert', 'err');
-  } catch (e) { ulog('Abort-Fehler: ' + e.message, 'err'); }
+    ulog(tl('Abbruch angefordert', 'Abort requested'), 'err');
+  } catch (e) { ulog(tl('Abort-Fehler: ', 'Abort error: ') + e.message, 'err'); }
 });
 
 // v2.1: Set-Filter helpers
@@ -1769,7 +1920,7 @@ btnUpdate.addEventListener('click', async () => {
     ? parsedUpdates.filter(u => selectedSets.has(u._expansion || '(unbekannt)'))
     : parsedUpdates;
   if (filteredUpdates.length === 0) {
-    ulog('Keine Sets ausgewählt. Mindestens 1 set anhaken vor update.', 'err');
+    ulog(tl('Keine Sets ausgewählt. Mindestens 1 set anhaken vor update.', 'No sets selected. Tick at least 1 set before updating.'), 'err');
     return;
   }
   const isDry = dryRunEl.checked;
@@ -1825,7 +1976,7 @@ btnUpdate.addEventListener('click', async () => {
     let result = scriptResult?.[0]?.result;
     if (!result) {
       // Try recover from window var (script context may have been destroyed)
-      ulog('Script result null - probiere Recovery via window.__cmUpdateResult...', 'err');
+      ulog(tl('Script result null - probiere Recovery via window.__cmUpdateResult...', 'Script result null - trying recovery via window.__cmUpdateResult...'), 'err');
       try {
         const [{ result: recovered }] = await chrome.scripting.executeScript({
           target: { tabId: tab.id },
@@ -1834,21 +1985,21 @@ btnUpdate.addEventListener('click', async () => {
         });
         if (recovered) {
           result = recovered;
-          ulog('Recovery erfolgreich', 'ok');
+          ulog(tl('Recovery erfolgreich', 'Recovery successful'), 'ok');
         }
       } catch (e) {
-        ulog('Recovery-Fehler: ' + e.message, 'err');
+        ulog(tl('Recovery-Fehler: ', 'Recovery error: ') + e.message, 'err');
       }
       if (!result) {
-        ulog('Kein Result. Tab evtl. navigiert weg. Cardmarket-Tab refreshen + retry.', 'err');
+        ulog(tl('Kein Result. Tab evtl. navigiert weg. Cardmarket-Tab refreshen + retry.', 'No result. The tab may have navigated away. Refresh the Cardmarket tab + retry.'), 'err');
         return;
       }
     }
 
     updateProgFillEl.style.width = '100%';
-    ulog(`${isDry ? 'DRY-RUN' : 'UPDATE'} fertig: ${result.ok || 0} OK, ${result.err || 0} Fehler`, 'ok');
+    ulog(tl(`${isDry ? 'DRY-RUN' : 'UPDATE'} fertig: ${result.ok || 0} OK, ${result.err || 0} Fehler`, `${isDry ? 'DRY-RUN' : 'UPDATE'} done: ${result.ok || 0} OK, ${result.err || 0} errors`), 'ok');
     if (result.errors?.length) {
-      ulog('Fehler-Details:', 'err');
+      ulog(tl('Fehler-Details:', 'Error details:'), 'err');
       result.errors.slice(0, 20).forEach(e => ulog(`  ${e.articleId}: ${e.msg}`, 'err'));
     }
   } catch (e) {
@@ -2393,8 +2544,8 @@ btnAbortWants.addEventListener('click', async () => {
       target: { tabId: tab.id },
       func: () => { window.__cmWantsStop = true; },
     });
-    wlog('Abbruch angefordert', 'err');
-  } catch (e) { wlog('Abort-Fehler: ' + e.message, 'err'); }
+    wlog(tl('Abbruch angefordert', 'Abort requested'), 'err');
+  } catch (e) { wlog(tl('Abort-Fehler: ', 'Abort error: ') + e.message, 'err'); }
 });
 
 btnWantsExport.addEventListener('click', async () => {
@@ -2403,14 +2554,14 @@ btnWantsExport.addEventListener('click', async () => {
   btnAbortWants.style.display = 'block';
   wantsProgressEl.style.display = 'block';
   wantsLogEl.innerHTML = '';
-  wlog('Starte Wants-Export...', 'ok');
+  wlog(tl('Starte Wants-Export...', 'Starting Wants export...'), 'ok');
 
   try {
     const tab = await getTargetTab();
     wlog(`Target-Tab: ${tab?.url || '(none)'}`);
     console.log('[CM-Wants-Popup] target tab:', tab?.url);
     if (!tab || !/cardmarket\.com/.test(tab.url || '')) {
-      wlog('Kein Cardmarket-Tab gefunden.', 'err');
+      wlog(tl('Kein Cardmarket-Tab gefunden.', 'No Cardmarket tab found.'), 'err');
       return;
     }
 
@@ -2454,18 +2605,18 @@ btnWantsExport.addEventListener('click', async () => {
     wantsProgFillEl.style.width = '100%';
 
     if (!result) {
-      wlog('Kein Result vom Scraper. Tab evtl. navigiert weg oder Cloudflare-block.', 'err');
+      wlog(tl('Kein Result vom Scraper. Tab evtl. navigiert weg oder Cloudflare-block.', 'No result from the scraper. The tab may have navigated away or Cloudflare blocked it.'), 'err');
       return;
     }
     if (result.error) {
-      wlog('Fehler: ' + result.error, 'err');
+      wlog(tl('Fehler: ', 'Error: ') + result.error, 'err');
       return;
     }
-    wlog(`Wantlists gefunden: ${result.wantlists?.length || 0}`, 'ok');
-    wlog(`Einträge gesamt: ${result.rows?.length || 0}`, 'ok');
+    wlog(tl(`Wantlists gefunden: ${result.wantlists?.length || 0}`, `Wantlists found: ${result.wantlists?.length || 0}`), 'ok');
+    wlog(tl(`Einträge gesamt: ${result.rows?.length || 0}`, `Entries total: ${result.rows?.length || 0}`), 'ok');
 
     if (!result.rows || result.rows.length === 0) {
-      wlog('Keine Einträge. Prüfe Login + dass mindestens eine Wantlist existiert.', 'err');
+      wlog(tl('Keine Einträge. Prüfe Login + dass mindestens eine Wantlist existiert.', 'No entries. Check login + that at least one wantlist exists.'), 'err');
       return;
     }
 
@@ -2532,7 +2683,7 @@ btnWantsExport.addEventListener('click', async () => {
       try {
         await chrome.downloads.download({ url: reader.result, filename: fname, saveAs: true });
         wlog('Download: ' + fname, 'ok');
-      } catch (e) { wlog('Download-Fehler: ' + e.message, 'err'); }
+      } catch (e) { wlog(tl('Download-Fehler: ', 'Download error: ') + e.message, 'err'); }
     };
     reader.readAsDataURL(blob);
   } catch (e) {
@@ -2855,14 +3006,14 @@ btnWantsAnalyze.addEventListener('click', async () => {
   parsedDeletes = [];
 
   const file = fileWantsCsv.files[0];
-  if (!file) { wlog('Keine CSV ausgewählt', 'err'); return; }
+  if (!file) { wlog(tl('Keine CSV ausgewählt', 'No CSV selected'), 'err'); return; }
 
   const text = await file.text();
   const { headers, rows, meta: bodyMeta } = parseCsv(text);
   // v2.1: Filename-Metadata merge
   const fnameMeta = parseFilenameMeta(file.name);
   const meta = { ...bodyMeta, ...fnameMeta };
-  wlog(`CSV gelesen: ${rows.length} Zeilen, ${headers.length} Spalten`);
+  wlog(tl(`CSV gelesen: ${rows.length} Zeilen, ${headers.length} Spalten`, `CSV read: ${rows.length} rows, ${headers.length} columns`));
 
   if (meta.exported || meta.tool) {
     wlog(`ℹ Export-Info: ${[
@@ -2874,12 +3025,12 @@ btnWantsAnalyze.addEventListener('click', async () => {
 
   // v2.1: smart detection — falsche CSV im falschen tab?
   if (headers.includes('ArticleID') && headers.includes('Price_EUR') && !headers.includes('idWant')) {
-    wlog('❌ Falsche CSV — das ist eine Stock-CSV, nicht Wants-CSV.', 'err');
-    wlog('Wechsel zum Tab "✏️ Bulk Update" → dort die Stock-CSV laden.', 'err');
+    wlog(tl('❌ Falsche CSV — das ist eine Stock-CSV, nicht Wants-CSV.', '❌ Wrong CSV — this is a stock CSV, not a Wants CSV.'), 'err');
+    wlog(tl('Wechsel zum Tab "✏️ Bulk Update" → dort die Stock-CSV laden.', 'Switch to the "✏️ Bulk Update" tab → load the stock CSV there.'), 'err');
     return;
   }
   if (!headers.includes('idWant') || !headers.includes('idWantsList') || !headers.includes('delete')) {
-    wlog('Fehler: CSV muss idWant + idWantsList + delete Spalten enthalten', 'err');
+    wlog(tl('Fehler: CSV muss idWant + idWantsList + delete Spalten enthalten', 'Error: CSV must contain idWant + idWantsList + delete columns'), 'err');
     return;
   }
 
@@ -2953,9 +3104,9 @@ btnWantsAnalyze.addEventListener('click', async () => {
     }
   }
 
-  if (invalid > 0) wlog(`⚠ ${invalid} Zeilen mit invaliden IDs übersprungen`, 'err');
-  wlog(`🗑 ${toDelete.length} Einträge zum Löschen (delete=Y)`, 'ok');
-  wlog(`✏ ${toEdit.length} Einträge zum Editieren (Felder geändert)`, 'ok');
+  if (invalid > 0) wlog(tl(`⚠ ${invalid} Zeilen mit invaliden IDs übersprungen`, `⚠ ${invalid} rows with invalid IDs skipped`), 'err');
+  wlog(tl(`🗑 ${toDelete.length} Einträge zum Löschen (delete=Y)`, `🗑 ${toDelete.length} entries to delete (delete=Y)`), 'ok');
+  wlog(tl(`✏ ${toEdit.length} Einträge zum Editieren (Felder geändert)`, `✏ ${toEdit.length} entries to edit (fields changed)`), 'ok');
 
   // v2.1: Edit-Diff-Preview
   if (toEdit.length > 0) {
@@ -2963,11 +3114,11 @@ btnWantsAnalyze.addEventListener('click', async () => {
       const diffStr = Object.entries(e.fieldDiffs).map(([k, v]) => `${k}: ${v.old}→${v.new}`).join(', ');
       return `  • ${e.productName.slice(0, 30)}: ${diffStr}`;
     }).join('\n');
-    wlog(`Edit-Beispiele:\n${sample}${toEdit.length > 5 ? `\n  ... +${toEdit.length - 5} weitere` : ''}`);
+    wlog(tl(`Edit-Beispiele:\n${sample}${toEdit.length > 5 ? `\n  ... +${toEdit.length - 5} weitere` : ''}`, `Edit examples:\n${sample}${toEdit.length > 5 ? `\n  ... +${toEdit.length - 5} more` : ''}`));
   }
 
   if (toDelete.length === 0 && toEdit.length === 0) {
-    wlog('Nichts zu tun. CSV "delete=Y" oder editable Felder (Language/MinCondition/MaxPrice_EUR/etc.) ändern.', 'err');
+    wlog(tl('Nichts zu tun. CSV "delete=Y" oder editable Felder (Language/MinCondition/MaxPrice_EUR/etc.) ändern.', 'Nothing to do. Set CSV "delete=Y" or change editable fields (Language/MinCondition/MaxPrice_EUR/etc.).'), 'err');
     return;
   }
 
@@ -3003,13 +3154,13 @@ btnWantsDelete.addEventListener('click', async () => {
     });
 
     if (!result) {
-      wlog('Kein Result. Tab evtl. navigiert weg.', 'err');
+      wlog(tl('Kein Result. Tab evtl. navigiert weg.', 'No result. The tab may have navigated away.'), 'err');
       return;
     }
-    wlog(`${isDry ? 'DRY-RUN' : 'LIVE'} fertig: ${result.ok || 0} OK, ${result.err || 0} Fehler${result.editsOk != null ? ` (${result.editsOk} edits, ${result.deletesOk} deletes)` : ''}`, 'ok');
+    wlog(tl(`${isDry ? 'DRY-RUN' : 'LIVE'} fertig: ${result.ok || 0} OK, ${result.err || 0} Fehler${result.editsOk != null ? ` (${result.editsOk} edits, ${result.deletesOk} deletes)` : ''}`, `${isDry ? 'DRY-RUN' : 'LIVE'} done: ${result.ok || 0} OK, ${result.err || 0} errors${result.editsOk != null ? ` (${result.editsOk} edits, ${result.deletesOk} deletes)` : ''}`), 'ok');
     if (!isDry && (result.ok > 0)) {
-      wlog(`⚠ "OK" heißt nur HTTP 200 — verifiziere durch refresh der Wants-Page ob Änderungen wirklich übernommen wurden!`, 'err');
-      wlog(`Falls Werte unverändert: Endpoint ist falsch. DevTools-Network-Trace bei manueller Edit-Aktion senden für exakten Endpoint.`, 'err');
+      wlog(tl(`⚠ "OK" heißt nur HTTP 200 — verifiziere durch refresh der Wants-Page ob Änderungen wirklich übernommen wurden!`, `⚠ "OK" only means HTTP 200 — verify by refreshing the Wants page whether the changes were actually applied!`), 'err');
+      wlog(tl(`Falls Werte unverändert: Endpoint ist falsch. DevTools-Network-Trace bei manueller Edit-Aktion senden für exakten Endpoint.`, `If values are unchanged: the endpoint is wrong. Send a DevTools network trace of a manual edit action for the exact endpoint.`), 'err');
     }
     if (result.errors?.length) {
       result.errors.slice(0, 20).forEach(e => wlog(`  ${e.idWant}: ${e.msg}`, 'err'));
