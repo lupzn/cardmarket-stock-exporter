@@ -6,6 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), version
 
 ---
 
+## [2.2.8] — 2026-07-16
+
+Fixes Bulk-Update on Cardmarket's newer stock-page markup, plus a pinned-tab targeting bug. Both reported in [#1](https://github.com/lupzn/cardmarket-stock-exporter/issues/1).
+
+### Fixed
+
+- **Fast Mode works on Cardmarket's new stock markup again.** In the same rollout that moved rows from `articleRow<id>` to `stockRow<id>` (see v2.2.6), Cardmarket also moved the CSRF token (`__cmtkn`) off the stock page and into each edit modal. Fast Mode's direct update read that token from the page DOM, found nothing (`__cmtkn missing`), fell back to the modal flow and timed out. It now reads the token from the page when present and otherwise fetches a single edit modal once, caches the token, and reuses it for the whole run — so Fast Mode is markup-independent and works on both the old and new stock pages. (Diagnosed from a user console dump: `cmtknInputs: 0`, `stockRows: 20`, `articleRows: 0`.)
+- **Pinned popup no longer targets the wrong tab.** When the popup was pinned into its own window, it kept using the originally-pinned tab without checking it was still on Cardmarket. If that tab had navigated elsewhere, `chrome.scripting.executeScript` failed with Chrome's raw *"Cannot access contents of the page…"*. `getTargetTab()` now re-validates the pinned tab against the extension's host permission (`https://www.cardmarket.com/*`), falls back to a real Cardmarket tab, and returns nothing when none is open — so you get a clear "open your Cardmarket stock page" message instead of the cryptic Chrome error.
+
+---
+
 ## [2.2.7] — 2026-07-13
 
 Export gains targeted set selection, and the remaining German-only log lines are now localized.

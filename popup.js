@@ -52,15 +52,26 @@ const urlParams = new URLSearchParams(location.search);
 const isDetached = urlParams.get('detached') === '1';
 const forcedTabId = urlParams.get('tabId') ? parseInt(urlParams.get('tabId'), 10) : null;
 
+// v2.2.8: only ever hand back a tab we can actually script (mirrors
+// host_permissions). A pinned/forced tab is reused ONLY if it is still on
+// www.cardmarket.com; otherwise find a real Cardmarket tab, and return null if
+// there is none — callers then show a clear "open your stock page" message
+// instead of Chrome's raw "Cannot access contents of the page" error (issue #1).
+const CM_TAB_URL = 'https://www.cardmarket.com/*';
+const CM_HOST_RE = /^https:\/\/www\.cardmarket\.com\//i;
 async function getTargetTab() {
   if (forcedTabId) {
-    try { return await chrome.tabs.get(forcedTabId); }
-    catch { /* tab was closed */ }
+    try {
+      const t = await chrome.tabs.get(forcedTabId);
+      if (t && CM_HOST_RE.test(t.url || '')) return t;   // pinned tab still on Cardmarket
+    } catch { /* tab was closed */ }
+    // pinned tab drifted off Cardmarket → fall through and find a real one
   }
-  const tabs = await chrome.tabs.query({ url: 'https://www.cardmarket.com/*' });
-  if (tabs.length) return tabs[0];
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  return tab;
+  const active = await chrome.tabs.query({ active: true, currentWindow: true, url: CM_TAB_URL });
+  if (active.length) return active[0];
+  const any = await chrome.tabs.query({ url: CM_TAB_URL });
+  if (any.length) return any[0];
+  return null;
 }
 
 if (isDetached) {
@@ -91,6 +102,7 @@ if (isDetached) {
 abortBtn.addEventListener('click', async () => {
   try {
     const tab = await getTargetTab();
+    if (!tab) return;
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: () => { window.__cmExportStop = true; },
@@ -1878,6 +1890,7 @@ btnAnalyze.addEventListener('click', async () => {
 btnAbortUpdate.addEventListener('click', async () => {
   try {
     const tab = await getTargetTab();
+    if (!tab) return;
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       world: 'MAIN',
@@ -1941,6 +1954,12 @@ btnUpdate.addEventListener('click', async () => {
   ulog(`Start ${isDry ? 'DRY-RUN' : 'LIVE UPDATE'}...`, 'ok');
 
   const tab = await getTargetTab();
+  if (!tab) {
+    ulog(tl('Kein Cardmarket-Tab offen. Öffne deine Stock-Seite (www.cardmarket.com/…/Stock/Offers/Singles) und klicke die Extension dort.',
+            'No Cardmarket tab open. Open your stock page (www.cardmarket.com/…/Stock/Offers/Singles) and click the extension there.'), 'err');
+    btnUpdate.disabled = false; btnAnalyze.disabled = false; btnAbortUpdate.style.display = 'none';
+    return;
+  }
   await chrome.scripting.executeScript({
     target: { tabId: tab.id },
     world: 'MAIN',
@@ -2028,8 +2047,24 @@ async function runBulkUpdate(args) {
   const lang = pathParts[0] || 'de';
   const game = pathParts[1] || 'Pokemon';
 
-  // v2.1: CSRF-Token aus current page extrahieren (für Direct-Mode + Fast-Mode)
-  const pageCmtkn = document.querySelector('input[name="__cmtkn"]')?.value || '';
+  // v2.2.8: the __cmtkn CSRF token used to sit in a page-level <input>. On
+  // Cardmarket's newer stock markup it moved into each edit modal, so the page
+  // DOM no longer has it (confirmed in issue #1: cmtknInputs=0 on the new page).
+  // Read the page first; if it's absent, fetch ONE edit modal, cache the token,
+  // and reuse it for the whole run → Fast Mode works on old AND new markup.
+  let cachedCmtkn = document.querySelector('input[name="__cmtkn"]')?.value
+    || (typeof window.__cmtkn === 'string' ? window.__cmtkn : '') || '';
+  async function resolveCmtkn(sampleId) {
+    if (cachedCmtkn) return cachedCmtkn;
+    try {
+      const res = await fetch(`/${lang}/${game}/Modal/Article_EditArticleModal?showUserOffersRow=1&idArticle=${sampleId}`, { credentials: 'include' });
+      if (res.ok) {
+        const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+        cachedCmtkn = doc.querySelector('input[name="__cmtkn"]')?.value || '';
+      }
+    } catch { /* leave empty → directUpdate throws a clear error */ }
+    return cachedCmtkn;
+  }
 
   // v2.1: Direct-Mode (verifiziert via DevTools-Trace LUPZN 2026-05-01)
   // Endpoint: POST /{lang}/{game}/AjaxAction/Article_EditSingleArticle
@@ -2049,10 +2084,11 @@ async function runBulkUpdate(args) {
     'T-Chinesisch': '11',
   };
   async function directUpdate(u) {
-    if (!pageCmtkn) throw new Error('direct: __cmtkn missing — Cardmarket-page muss geladen sein');
     const targetId = u.rebindTo || u.articleId;
+    const tkn = await resolveCmtkn(targetId);
+    if (!tkn) throw new Error('direct: __cmtkn not found on page or in edit modal — reload your Cardmarket stock page and retry');
     const fd = new FormData();
-    fd.append('__cmtkn', pageCmtkn);
+    fd.append('__cmtkn', tkn);
     fd.append('idArticle', targetId);
     // Condition: string value direkt aus CSV (NM/EX/LP/...)
     fd.append('condition', u.condition || 'NM');
@@ -2540,6 +2576,7 @@ let parsedWantsEdits = [];
 btnAbortWants.addEventListener('click', async () => {
   try {
     const tab = await getTargetTab();
+    if (!tab) return;
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: () => { window.__cmWantsStop = true; },
