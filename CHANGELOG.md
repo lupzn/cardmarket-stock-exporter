@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), version
 
 ---
 
+## [2.2.9] — 2026-08-06
+
+### Added
+
+- **Variant-flag columns in the stock export.** The exported CSV now has four new Y/N columns next to the existing `ReverseHolo` — **`FirstEd`, `Signed`, `Altered`, `Playset`** — read from each listing's variant icons on the stock page (the same tooltip source as reverse-holo). Requested in [#2](https://github.com/lupzn/cardmarket-stock-exporter/issues/2). The columns are informational in the export; Bulk-Update is unaffected (it still preserves these flags from Cardmarket's own data, and reads the CSV by column name, so existing sheets keep working).
+
+---
+
 ## [2.2.8] — 2026-07-16
 
 Fixes Bulk-Update on Cardmarket's newer stock-page markup, plus a pinned-tab targeting bug. Both reported in [#1](https://github.com/lupzn/cardmarket-stock-exporter/issues/1).

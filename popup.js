@@ -390,7 +390,7 @@ function buildCsv(rows, meta = {}) {
   // v2.1 Skip-Fetch: _OriginalPrice_EUR + _OriginalComments als Read-Only Referenz für Edit-Detection
   // Bei Re-Import wird verglichen: wenn Price_EUR === _OriginalPrice_EUR → user hat nicht editiert → skip Cardmarket-Fetch
   // Massive Reduktion der Cloudflare-Last: 1500 rows mit 50 edits → 50 fetches statt 1500
-  const cols = ['ArticleID', 'idProduct', 'Name', 'ExpansionCode', 'SetCode', 'CollectorNumber', 'Expansion', 'Rarity', 'Language', 'Condition', 'ConditionFull', 'ReverseHolo', 'Comments', '_OriginalComments', 'Price_EUR', '_OriginalPrice_EUR', 'Amount', 'Total_EUR', 'ProductUrl', 'ImageUrl', 'delete'];
+  const cols = ['ArticleID', 'idProduct', 'Name', 'ExpansionCode', 'SetCode', 'CollectorNumber', 'Expansion', 'Rarity', 'Language', 'Condition', 'ConditionFull', 'ReverseHolo', 'FirstEd', 'Signed', 'Altered', 'Playset', 'Comments', '_OriginalComments', 'Price_EUR', '_OriginalPrice_EUR', 'Amount', 'Total_EUR', 'ProductUrl', 'ImageUrl', 'delete'];
   const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   // Excel-formula wrapper to keep long IDs as text (otherwise Excel converts to scientific notation)
   const escId = id => `"=""${String(id ?? '').replace(/"/g, '""')}"""`;
@@ -438,6 +438,7 @@ function buildCsv(rows, meta = {}) {
       escId(r.idProduct || ''),
       esc(r.name), esc(r.expansionCode), esc(setCode), esc(collectorNumber), esc(r.expansion), esc(r.rarity), esc(r.language), esc(r.condition), esc(r.conditionFull),
       esc(yn(r.reverse)),
+      esc(yn(r.firstEd)), esc(yn(r.signed)), esc(yn(r.altered)), esc(yn(r.playset)),
       // v2.1 Skip-Fetch: Comments + _OriginalComments (gleicher Wert beim Export, divergiert wenn user editiert)
       esc(r.comments), esc(r.comments),
       // Price_EUR + _OriginalPrice_EUR
@@ -616,6 +617,15 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
     // Reverse Holo detection — comments OR icon aria-label
     const txtAll = (row.comments || '') + ' ' + (el.textContent || '');
     row.reverse = /Reverse\s*Holo/i.test(txtAll) || !!el.querySelector('[aria-label*="Reverse" i], [data-bs-original-title*="Reverse" i], [title*="Reverse" i]');
+    // v2.2.9 (issue #2): variant flags from the row's variant icons, mirroring
+    // reverse-holo detection. CM tooltip labels (EN UI): "First Edition", "Signed",
+    // "Altered", "Playset"; German UI uses translated titles → match both.
+    const hasIcon = (...pats) => !!el.querySelector(pats.flatMap(p =>
+      [`[aria-label*="${p}" i]`, `[title*="${p}" i]`, `[data-bs-original-title*="${p}" i]`]).join(','));
+    row.firstEd = hasIcon('First Edition', '1st Edition', '1. Auflage', 'Erstauflage', 'Erstausgabe');
+    row.signed  = hasIcon('Signed', 'Signiert');
+    row.altered = hasIcon('Altered', 'Verändert', 'Bemalt');
+    row.playset = hasIcon('Playset');
     return row;
   }
 
