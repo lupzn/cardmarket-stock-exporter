@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), version
 
 ---
 
+## [2.2.10] — 2026-08-09
+
+### Added
+
+- **`Foil` column in the stock export.** Completes the variant flags added in v2.2.9 — the exported CSV now has a `Foil` (Y/N) column right next to `ReverseHolo`, read from each listing's foil icon on the stock page. Especially useful for Magic: The Gathering sellers, where Foil is the key variant. Requested by e-mail.
+
+---
+
 ## [2.2.9] — 2026-08-06
 
 ### Added

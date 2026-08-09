@@ -390,7 +390,7 @@ function buildCsv(rows, meta = {}) {
   // v2.1 Skip-Fetch: _OriginalPrice_EUR + _OriginalComments als Read-Only Referenz für Edit-Detection
   // Bei Re-Import wird verglichen: wenn Price_EUR === _OriginalPrice_EUR → user hat nicht editiert → skip Cardmarket-Fetch
   // Massive Reduktion der Cloudflare-Last: 1500 rows mit 50 edits → 50 fetches statt 1500
-  const cols = ['ArticleID', 'idProduct', 'Name', 'ExpansionCode', 'SetCode', 'CollectorNumber', 'Expansion', 'Rarity', 'Language', 'Condition', 'ConditionFull', 'ReverseHolo', 'FirstEd', 'Signed', 'Altered', 'Playset', 'Comments', '_OriginalComments', 'Price_EUR', '_OriginalPrice_EUR', 'Amount', 'Total_EUR', 'ProductUrl', 'ImageUrl', 'delete'];
+  const cols = ['ArticleID', 'idProduct', 'Name', 'ExpansionCode', 'SetCode', 'CollectorNumber', 'Expansion', 'Rarity', 'Language', 'Condition', 'ConditionFull', 'ReverseHolo', 'Foil', 'FirstEd', 'Signed', 'Altered', 'Playset', 'Comments', '_OriginalComments', 'Price_EUR', '_OriginalPrice_EUR', 'Amount', 'Total_EUR', 'ProductUrl', 'ImageUrl', 'delete'];
   const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   // Excel-formula wrapper to keep long IDs as text (otherwise Excel converts to scientific notation)
   const escId = id => `"=""${String(id ?? '').replace(/"/g, '""')}"""`;
@@ -437,7 +437,7 @@ function buildCsv(rows, meta = {}) {
       escId(r.articleId),
       escId(r.idProduct || ''),
       esc(r.name), esc(r.expansionCode), esc(setCode), esc(collectorNumber), esc(r.expansion), esc(r.rarity), esc(r.language), esc(r.condition), esc(r.conditionFull),
-      esc(yn(r.reverse)),
+      esc(yn(r.reverse)), esc(yn(r.foil)),
       esc(yn(r.firstEd)), esc(yn(r.signed)), esc(yn(r.altered)), esc(yn(r.playset)),
       // v2.1 Skip-Fetch: Comments + _OriginalComments (gleicher Wert beim Export, divergiert wenn user editiert)
       esc(r.comments), esc(r.comments),
@@ -626,6 +626,7 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
     row.signed  = hasIcon('Signed', 'Signiert');
     row.altered = hasIcon('Altered', 'Verändert', 'Bemalt');
     row.playset = hasIcon('Playset');
+    row.foil    = hasIcon('Foil');   // v2.2.10: Magic/Foil column (requested by e-mail)
     return row;
   }
 
