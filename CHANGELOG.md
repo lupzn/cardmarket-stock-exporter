@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), version
 
 ---
 
+## [2.2.11] — 2026-08-10
+
+### Fixed
+
+- **Stock export no longer under-counts large or awkwardly-paginated stock.** Two Cardmarket pagination quirks could silently drop listings from the export:
+  - **Sort-order pagination gap:** under some sort orders Cardmarket occasionally omits a listing between pages, even in small sets (e.g. 36 cards exporting as 35). The export now reads Cardmarket's own result counter and, when it collected fewer unique ArticleIDs than Cardmarket reports, re-runs that scope with a different sort order (`price_desc`) and merges the results by ArticleID.
+  - **Exact 300-listing cap:** a scope that hit Cardmarket's 300-listing cap could look "complete" — the affected stock view serves 20 rows per page, so the old "last page full" cap check missed it — and skip the language/condition subdivision. Reaching 300 listings now always triggers subdivision.
+
+  Together these recover listings that were previously lost. Diagnosed and verified in detail by a user (Ángel), who confirmed a full export going from 6,853 to the correct 6,964 cards. Thank you! The export now logs a short "pagination recovery" summary when it recovers anything.
+
+---
+
 ## [2.2.10] — 2026-08-09
 
 ### Added

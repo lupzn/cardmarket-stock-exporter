@@ -320,6 +320,28 @@ async function runExport(maxPages, opts = {}) {
     log(t('log_pages_scanned', [result.pagesScanned]), 'ok');
     if (result.detectedTotalPages) log(t('log_pagination_widget', [result.detectedTotalPages]));
     log(t('log_rows_dedup', [result.rows.length]), 'ok');
+    if (result.recoveryStats && result.recoveryStats.attempts > 0) {
+      const rs = result.recoveryStats;
+      log(
+        tl(
+          `Pagination-Recovery: ${rs.attempts} Scope(s) mit price_desc erneut geprüft; ${rs.recovered} Listing(s) zusätzlich gefunden.`,
+          `Pagination recovery: retried ${rs.attempts} scope(s) with price_desc; recovered ${rs.recovered} additional listing(s).`
+        ),
+        rs.recovered > 0 ? 'ok' : ''
+      );
+      if (rs.unresolved && rs.unresolved.length) {
+        log(
+          tl(
+            `⚠ ${rs.unresolved.length} Scope(s) bleiben nach Recovery unvollständig.`,
+            `⚠ ${rs.unresolved.length} scope(s) are still incomplete after recovery.`
+          ),
+          'err'
+        );
+        rs.unresolved.slice(0, 10).forEach(u => {
+          log(`  ${u.label}: ${u.observed}/${u.expected} (${u.missing} missing)`, 'err');
+        });
+      }
+    }
     const emptyAmount = result.rows.filter(r => !(r.amountDisplay || r.amount)).length;
     if (emptyAmount > 0) log(t('log_rows_no_amount', [emptyAmount]), 'err');
     // v2.1: idProduct-Coverage-Summary für späteren Auto-Rebind
@@ -632,15 +654,63 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
 
   const rows = [];
   const seen = new Set();
+  // Experimental pagination-recovery patch:
+  // Cardmarket can expose N result listings for a filtered stock view while a
+  // particular sort order yields fewer than N unique ArticleIDs across pages.
+  // When that happens, retry the same scope with price_desc and merge by ArticleID.
+  const recoveryStats = { attempts: 0, recovered: 0, unresolved: [] };
   let pagesScanned = 0;
   let debugSnippet = '';
   let detectedTotalPages = null;
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-  // v2.1: mkUrl akzeptiert generisches filter-Objekt (idExpansion + optional idLanguage + idCondition + isReverseHolo)
-  const mkUrl = (p, filter = {}) => {
+  const parseLooseCount = (value) => {
+    const digits = String(value || '').replace(/[^\d]/g, '');
+    return digits ? parseInt(digits, 10) : null;
+  };
+
+  // Reads Cardmarket's listing-result counter, e.g. "23 Results",
+  // "23 Resultados", "23 Ergebnisse", "23 Résultats", "23 Risultati".
+  // IMPORTANT: this is the number of LISTINGS/RESULTS, not the sum of Amount.
+  const extractExpectedListingCount = (doc) => {
+    const texts = [];
+    const selectors = [
+      '.pagination',
+      '[class*="pagination"]',
+      '[class*="result-count"]',
+      '[class*="results-count"]',
+      '[class*="result"]',
+    ];
+    selectors.forEach(sel => {
+      doc.querySelectorAll(sel).forEach(el => {
+        const t = (el.innerText || el.textContent || '').replace(/\u00a0/g, ' ').trim();
+        if (t) texts.push(t);
+      });
+    });
+    const bodyText = (doc.body?.innerText || doc.body?.textContent || '').replace(/\u00a0/g, ' ');
+    if (bodyText) texts.push(bodyText);
+
+    const resultWord = '(?:Results?|Resultados?|Ergebnisse?|Résultats?|Resultats?|Risultati)';
+    const beforeWord = new RegExp(`(?:^|\\s)(\\d[\\d\\s.,]*)\\s*${resultWord}\\b`, 'i');
+    const afterWord = new RegExp(`\\b${resultWord}\\s*[:\\-]?\\s*(\\d[\\d\\s.,]*)`, 'i');
+
+    for (const txt of texts) {
+      let m = txt.match(beforeWord);
+      if (!m) m = txt.match(afterWord);
+      if (!m) continue;
+      const n = parseLooseCount(m[1]);
+      if (Number.isFinite(n)) return n;
+    }
+    return null;
+  };
+
+  // v2.1: mkUrl akzeptiert generisches filter-Objekt
+  // Experimental patch: sortOverride lets a recovery pass explicitly request
+  // price_desc without changing the user's normal name_asc/default setting.
+  const mkUrl = (p, filter = {}, sortOverride = null) => {
     const params = new URLSearchParams();
-    if (useSortBy) params.set('sortBy', 'name_asc');
+    if (sortOverride) params.set('sortBy', sortOverride);
+    else if (useSortBy) params.set('sortBy', 'name_asc');
     if (filter.idExpansion) params.set('idExpansion', filter.idExpansion);
     if (filter.idLanguage) params.set('idLanguage', filter.idLanguage);
     if (filter.idCondition) params.set('idCondition', filter.idCondition);
@@ -650,8 +720,8 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
     return `${basePath}?${params.toString()}`;
   };
 
-  const fetchPage = async (p, filter = {}) => {
-    const url = mkUrl(p, filter);
+  const fetchPage = async (p, filter = {}, sortOverride = null) => {
+    const url = mkUrl(p, filter, sortOverride);
     let res;
     try { res = await fetch(url, { credentials: 'include' }); }
     catch (fe) {
@@ -670,25 +740,43 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
     );
   };
 
-  // v2.1: scrapePages akzeptiert filter-Objekt + meldet cap-Verdacht
-  // Returns { added, capSuspect, totalPagesSeen, pagesFetched }
-  const scrapePages = async (filter, label, expIdx, expTotal, expName) => {
+  // Scrape one filter/sort scope.
+  // Returns both global additions and the unique ArticleIDs observed in THIS pass.
+  const scrapePages = async (filter, label, expIdx, expTotal, expName, sortOverride = null) => {
     let page = 1;
     let emptyStreak = 0;
     let localAdded = 0;
-    let totalPagesSeen = 0; // aus Pagination-Widget der Sub-Scope
+    let totalPagesSeen = 0;
     let pagesFetched = 0;
     let lastPageRowCount = 0;
+    let expectedListings = null;
+    let anonymousObserved = 0;
+    let passDuplicateCount = 0;
+    const passSeen = new Set();
+    const sortLabel = sortOverride || (useSortBy ? 'name_asc' : 'default');
 
     while (true) {
       if (window.__cmExportStop) { writeProgress({ status: 'aborted', lastErr: 'Abgebrochen' }); throw new Error('Abgebrochen'); }
       if (maxPages && page > maxPages) break;
-      writeProgress({ status: 'running', expansion: expIdx ? { idx: expIdx, total: expTotal, name: expName, id: filter.idExpansion } : null, page, label });
-      const { res, url } = await fetchPage(page, filter);
+      writeProgress({
+        status: 'running',
+        expansion: expIdx ? { idx: expIdx, total: expTotal, name: expName, id: filter.idExpansion } : null,
+        page,
+        label: `${label} [sort=${sortLabel}]`,
+      });
+
+      const { res, url } = await fetchPage(page, filter, sortOverride);
       if (res.status === 429) { console.warn('[CM] 429 pause 10s'); writeProgress({ lastErr: '429 Rate-Limit, Pause 10s' }); await sleep(10000); continue; }
       if (!res.ok) throw new Error(`HTTP ${res.status} @ ${url}`);
       const html = await res.text();
       const doc = new DOMParser().parseFromString(html, 'text/html');
+
+      if (page === 1) {
+        expectedListings = extractExpectedListingCount(doc);
+        if (expectedListings != null) {
+          console.log(`[CM] ${label} sort=${sortLabel}: Cardmarket reports ${expectedListings} result listings`);
+        }
+      }
 
       if (page === 1 && !filter.idExpansion && !detectedTotalPages) {
         const links = doc.querySelectorAll('a[href*="site="]');
@@ -700,7 +788,6 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
         detectedTotalPages = maxP || null;
       }
 
-      // v2.1: Per-scope-Pagination tracken (für cap-Detection)
       if (page === 1) {
         const links = doc.querySelectorAll('a[href*="site="]');
         let maxP = 0;
@@ -712,12 +799,10 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
       }
 
       let rowEls = doc.querySelectorAll('[id^="articleRow"].article-row, .article-row');
-      // v2.1: Empty-page-retry — Cardmarket gibt manchmal 200 OK aber leere page bei rate-limit-edge ODER cloudflare-challenge
-      // Retry-Heuristik: wenn page leer aber per-scope-totalPagesSeen sagt mehr pages sollten existieren → 1x retry mit pause
       if (!rowEls.length && page > 1 && page <= totalPagesSeen) {
         console.warn(`[CM] ${label} page ${page} unexpected empty (totalPagesSeen=${totalPagesSeen}). Retry in 3s...`);
         await sleep(3000);
-        const { res: retryRes } = await fetchPage(page, filter);
+        const { res: retryRes } = await fetchPage(page, filter, sortOverride);
         if (retryRes.ok) {
           const retryHtml = await retryRes.text();
           const retryDoc = new DOMParser().parseFromString(retryHtml, 'text/html');
@@ -727,6 +812,7 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
           }
         }
       }
+
       if (!rowEls.length) {
         if (page === 1) {
           if (!debugSnippet) debugSnippet = (doc.querySelector('.table-body')?.outerHTML || doc.body?.innerHTML || html).slice(0, 2000);
@@ -741,78 +827,203 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
       emptyStreak = 0;
 
       let added = 0, duped = 0;
+      let passAddedThisPage = 0, passDupedThisPage = 0;
+
       rowEls.forEach(el => {
         const row = parseRow(el);
         if (!row.articleId) {
-          if (row.name || row.price) { rows.push(row); added++; localAdded++; }
+          if (row.name || row.price) {
+            rows.push(row);
+            added++;
+            localAdded++;
+            anonymousObserved++;
+            passAddedThisPage++;
+          }
           return;
         }
+
+        // Track pagination duplicates inside THIS pass separately from the
+        // global dedupe set. This matters for recovery passes: page 1 can be
+        // entirely "already seen globally" and we still must continue to page 2.
+        if (passSeen.has(row.articleId)) {
+          passDupedThisPage++;
+          passDuplicateCount++;
+        } else {
+          passSeen.add(row.articleId);
+          passAddedThisPage++;
+        }
+
         if (seen.has(row.articleId)) { duped++; return; }
         seen.add(row.articleId);
         rows.push(row);
         added++;
         localAdded++;
       });
+
       pagesScanned++;
       pagesFetched++;
       lastPageRowCount = rowEls.length;
-      console.log(`[CM] ${label} page ${page}: +${added} (dup ${duped}, total ${rows.length})`);
-      if (added === 0 && duped > 0) break;
+      console.log(
+        `[CM] ${label} sort=${sortLabel} page ${page}: +${added} global ` +
+        `(global dup ${duped}; pass unique ${passSeen.size}; pass dup ${passDuplicateCount}; total ${rows.length})`
+      );
+
+      // Loop protection must be pass-local, not global. Otherwise an alternate
+      // sort recovery pass would stop on page 1 because all page-1 IDs were
+      // already collected by the primary pass.
+      if (passAddedThisPage === 0 && passDupedThisPage > 0) break;
+
       page++;
       if (page > 5000) break;
       if (delay) await sleep(delay);
     }
 
-    // v2.1: Cap-Detection-Heuristik (aggressiver nach LUPZN-feedback 30.4.2026 — 0.4% loss bei kleineren sets)
-    // Threshold auf 200 gesenkt damit auch sets mit 250-280 listings cascade triggern
-    const ROWS_PER_PAGE_FULL = 40;
-    const CAP_THRESHOLD_ROWS = 200; // aggressiver als 280 → fängt auch sets in 250-300-bereich
-    const capSuspect = (
-      localAdded >= CAP_THRESHOLD_ROWS &&
-      lastPageRowCount >= ROWS_PER_PAGE_FULL
-    );
+    const passObserved = passSeen.size + anonymousObserved;
 
-    return { added: localAdded, capSuspect, totalPagesSeen, pagesFetched };
+    // Cardmarket currently hard-caps broad stock views at 300 result listings.
+    // The old v2.2.10 heuristic assumed a 40-row full page, but Cardmarket now
+    // serves 20 rows/page in the affected Magic stock view. That makes an exact
+    // 300-result cap look "complete" (15 full pages) and prevents the existing
+    // language/condition cascade from ever starting.
+    //
+    // Use the pass-local observed count instead: if this scope reaches the
+    // 300-listing ceiling, treat it as cap-suspect even when Cardmarket's own
+    // result counter also says exactly 300. A genuinely exact-300 scope may do
+    // an unnecessary cascade, but global ArticleID dedupe keeps the output safe.
+    const CARDMARKET_SCOPE_CAP = 300;
+    const capSuspect = passObserved >= CARDMARKET_SCOPE_CAP;
+
+    return {
+      added: localAdded,
+      capSuspect,
+      totalPagesSeen,
+      pagesFetched,
+      expectedListings,
+      passObserved,
+      passArticleIds: [...passSeen],
+      passDuplicateCount,
+      sortLabel,
+    };
   };
 
-  // v2.1: Cascading-Driver — wenn cap-Verdacht → Filter-Achsen tiefer aufteilen
-  // Reihenfolge: idLanguage → idCondition → isReverseHolo. Stopp-Bedingung: keine Achse mehr ODER cap weg.
-  // LANG-IDs aus Cardmarket: 1=DE, 2=EN, 3=FR, 4=ES, 5=IT, 6=S-CN, 7=JP, 8=KO, 9=RU, 10=PT (defensiv 1-15)
-  // COND-IDs: 1=MT, 2=NM, 3=EX, 4=GD, 5=LP, 6=PL, 7=PO
+  // Wrapper used everywhere a scope is scraped. If Cardmarket's own result
+  // counter says there should be more unique listings than the primary sort
+  // produced, retry with price_desc and union the ArticleIDs.
+  const scrapeScope = async (filter, label, expIdx, expTotal, expName) => {
+    const primary = await scrapePages(filter, label, expIdx, expTotal, expName, null);
+
+    // Respect an explicit maxPages user limit; comparing against the full result
+    // count would otherwise create a false "missing" signal.
+    if (maxPages) return primary;
+
+    const expected = primary.expectedListings;
+    const missing = (expected != null) ? Math.max(0, expected - primary.passObserved) : 0;
+    // If Cardmarket's result counter cannot be parsed, a repeated ArticleID
+    // inside the same paginated pass is still a strong overlap signal.
+    const overlapWithoutCount = (expected == null && primary.passDuplicateCount > 0);
+    if (!missing && !overlapWithoutCount) return primary;
+
+    recoveryStats.attempts++;
+    if (expected != null) {
+      console.warn(
+        `[CM] ${label}: Cardmarket reports ${expected} listings, primary sort returned ` +
+        `${primary.passObserved} unique/observable listings. Retrying with price_desc...`
+      );
+      writeProgress({
+        lastErr: `${label}: ${primary.passObserved}/${expected} listings; retry sort=price_desc`,
+      });
+    } else {
+      console.warn(
+        `[CM] ${label}: detected ${primary.passDuplicateCount} duplicate ArticleID(s) across the ` +
+        `primary pagination and no result counter was parsed. Retrying with price_desc...`
+      );
+      writeProgress({
+        lastErr: `${label}: pagination overlap detected; retry sort=price_desc`,
+      });
+    }
+
+    if (delay) await sleep(delay);
+    const beforeRows = rows.length;
+    const alt = await scrapePages(filter, `${label} RECOVERY`, expIdx, expTotal, expName, 'price_desc');
+    const recoveredNow = rows.length - beforeRows;
+    recoveryStats.recovered += recoveredNow;
+
+    const combinedIds = new Set([...primary.passArticleIds, ...alt.passArticleIds]);
+    // v2.2.10 should provide ArticleID for every real row. Anonymous rows are
+    // conservatively counted from the larger pass, avoiding double-counting.
+    const primaryAnon = Math.max(0, primary.passObserved - primary.passArticleIds.length);
+    const altAnon = Math.max(0, alt.passObserved - alt.passArticleIds.length);
+    const combinedObserved = combinedIds.size + Math.max(primaryAnon, altAnon);
+    const remaining = (expected != null) ? Math.max(0, expected - combinedObserved) : 0;
+
+    if (recoveredNow > 0) {
+      console.warn(
+        `[CM] ${label}: recovery added ${recoveredNow} listing(s); ` +
+        `coverage is now ${combinedObserved}/${expected}.`
+      );
+    }
+
+    if (remaining > 0) {
+      console.warn(`[CM] ${label}: still missing ${remaining} listing(s) after price_desc recovery.`);
+      recoveryStats.unresolved.push({
+        label,
+        expected,
+        observed: combinedObserved,
+        missing: remaining,
+      });
+      writeProgress({
+        lastErr: `${label}: still ${combinedObserved}/${expected} after price_desc; cascading if possible`,
+      });
+    }
+
+    return {
+      ...primary,
+      added: primary.added + alt.added,
+      passObserved: combinedObserved,
+      passArticleIds: [...combinedIds],
+      passDuplicateCount: primary.passDuplicateCount + alt.passDuplicateCount,
+      // If Cardmarket still says listings are missing, force the existing
+      // cascade machinery to split the scope further when possible.
+      capSuspect: primary.capSuspect || remaining > 0,
+    };
+  };
+
+  // Existing cascading driver, now routed through scrapeScope so every
+  // expansion/language/condition scope gets the result-count recovery check.
   const LANG_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
   const COND_IDS = [1, 2, 3, 4, 5, 6, 7];
 
   const scrapeWithCascade = async (baseFilter, label, expIdx, expTotal, expName) => {
-    // Stage 1: try base filter directly
-    const r1 = await scrapePages(baseFilter, label, expIdx, expTotal, expName);
+    const r1 = await scrapeScope(baseFilter, label, expIdx, expTotal, expName);
     if (!r1.capSuspect) return r1.added;
 
-    // Cap detected → cascade by language (only if not already filtered by language)
     if (!baseFilter.idLanguage) {
-      console.warn(`[CM] ${label} cap-suspect (${r1.added} rows). Cascading by language...`);
-      writeProgress({ lastErr: `${label}: cap-Verdacht, splitte nach Sprache` });
-      let totalAdded = 0;
+      console.warn(`[CM] ${label} cap/gap-suspect (${r1.added} new rows). Cascading by language...`);
+      writeProgress({ lastErr: `${label}: cap/gap suspect, split by language` });
+      let totalAdded = r1.added;
       for (const langId of LANG_IDS) {
         if (window.__cmExportStop) break;
         const filter = { ...baseFilter, idLanguage: langId };
         const subLabel = `${label} [lang=${langId}]`;
-        const r2 = await scrapePages(filter, subLabel, expIdx, expTotal, expName);
+        const r2 = await scrapeScope(filter, subLabel, expIdx, expTotal, expName);
         totalAdded += r2.added;
+
         if (r2.capSuspect && !baseFilter.idCondition) {
-          // Stage 2: cascade by condition
-          console.warn(`[CM] ${subLabel} still cap-suspect. Cascading by condition...`);
+          console.warn(`[CM] ${subLabel} still cap/gap-suspect. Cascading by condition...`);
           for (const condId of COND_IDS) {
             if (window.__cmExportStop) break;
             const filter2 = { ...filter, idCondition: condId };
             const subLabel2 = `${subLabel} [cond=${condId}]`;
-            const r3 = await scrapePages(filter2, subLabel2, expIdx, expTotal, expName);
+            const r3 = await scrapeScope(filter2, subLabel2, expIdx, expTotal, expName);
+            totalAdded += r3.added;
+
             if (r3.capSuspect && baseFilter.isReverseHolo == null) {
-              // Stage 3: cascade by reverseHolo
-              console.warn(`[CM] ${subLabel2} still cap-suspect. Cascading by reverseHolo...`);
+              console.warn(`[CM] ${subLabel2} still cap/gap-suspect. Cascading by reverseHolo...`);
               for (const rh of [false, true]) {
                 if (window.__cmExportStop) break;
                 const filter3 = { ...filter2, isReverseHolo: rh };
-                await scrapePages(filter3, `${subLabel2} [rh=${rh ? 1 : 0}]`, expIdx, expTotal, expName);
+                const r4 = await scrapeScope(filter3, `${subLabel2} [rh=${rh ? 1 : 0}]`, expIdx, expTotal, expName);
+                totalAdded += r4.added;
                 if (delay) await sleep(delay);
               }
             }
@@ -939,10 +1150,10 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
       }
     }
     writeProgress({ status: 'done' });
-    return { rows, pagesScanned, debugSnippet, detectedTotalPages, aborted: !!window.__cmExportStop };
+    return { rows, pagesScanned, debugSnippet, detectedTotalPages, recoveryStats, aborted: !!window.__cmExportStop };
   } catch (e) {
     writeProgress({ status: 'error', lastErr: e.message });
-    return { error: e.message, rows, pagesScanned, debugSnippet, detectedTotalPages, aborted: !!window.__cmExportStop };
+    return { error: e.message, rows, pagesScanned, debugSnippet, detectedTotalPages, recoveryStats, aborted: !!window.__cmExportStop };
   }
 }
 
