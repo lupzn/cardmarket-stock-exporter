@@ -342,6 +342,34 @@ async function runExport(maxPages, opts = {}) {
         });
       }
     }
+    // v2.2.12: Bestands-Abgleich — Export vs. Cardmarkets Set-Kartenzahlen (sprachunabhängig)
+    if (result.completeness && !result.aborted) {
+      const c = result.completeness;
+      if (c.missingTotal > 0) {
+        log(tl(
+          `⚠ Bestands-Abgleich: ${c.observedTotal}/${c.expectedTotal} Karten exportiert — ${c.missingTotal} fehlen trotz Nachladen.`,
+          `⚠ Stock check: exported ${c.observedTotal}/${c.expectedTotal} cards — ${c.missingTotal} still missing after recovery.`
+        ), 'err');
+        c.shortfalls.slice(0, 15).forEach(s => log(`  ${s.name}: ${s.observed}/${s.expected} (${s.missing})`, 'err'));
+      } else if (c.checkedExpansions > 0) {
+        log(tl(
+          `✓ Bestands-Abgleich: alle ${c.expectedTotal} Karten aus ${c.checkedExpansions} Sets vollständig exportiert.`,
+          `✓ Stock check: all ${c.expectedTotal} cards across ${c.checkedExpansions} sets exported completely.`
+        ), 'ok');
+      }
+      if (c.recovered > 0) {
+        log(tl(
+          `↻ ${c.recovered} Set(s) per Nachladen vervollständigt.`,
+          `↻ Recovered ${c.recovered} set(s) via completeness re-scan.`
+        ), 'ok');
+      }
+      if (c.uncountedExpansions > 0) {
+        log(tl(
+          `ℹ ${c.uncountedExpansions} Set(s) ohne Cardmarket-Zählwert — nicht geprüft.`,
+          `ℹ ${c.uncountedExpansions} set(s) had no Cardmarket count — not verified.`
+        ), '');
+      }
+    }
     const emptyAmount = result.rows.filter(r => !(r.amountDisplay || r.amount)).length;
     if (emptyAmount > 0) log(t('log_rows_no_amount', [emptyAmount]), 'err');
     // v2.1: idProduct-Coverage-Summary für späteren Auto-Rebind
@@ -654,6 +682,11 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
 
   const rows = [];
   const seen = new Set();
+  // v2.2.12: anonymous rows (no articleId) have no natural dedup key; a recovery or
+  // completeness re-scan of the same scope would otherwise re-push them — duplicating
+  // CSV lines and inflating the completeness tally (a false "complete"). Dedup on a
+  // synthetic key so anonymous rows behave like keyed rows: counted and pushed once.
+  const anonSeen = new Set();
   // Experimental pagination-recovery patch:
   // Cardmarket can expose N result listings for a filtered stock view while a
   // particular sort order yields fewer than N unique ArticleIDs across pages.
@@ -814,15 +847,46 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
       }
 
       if (!rowEls.length) {
-        if (page === 1) {
+        // v2.2.12: Only the broad (languageless whole-expansion / ALL) scope retries a
+        // transient-empty page 1 — that is where a WHOLE set could silently vanish
+        // (no rows, not cap-suspect, no error thrown; e.g. Reisegefährten, 913 cards).
+        // Deep cascade sub-scopes (a language/condition the seller doesn't stock) are
+        // legitimately empty and must break fast, without the 3s retry penalty.
+        const broadScope = !filter.idLanguage && !filter.idCondition && filter.isReverseHolo == null;
+        if (page === 1 && broadScope) {
+          if (window.__cmExportStop) { writeProgress({ status: 'aborted', lastErr: 'Abgebrochen' }); throw new Error('Abgebrochen'); }
+          await sleep(3000);
+          const { res: p1res } = await fetchPage(1, filter, sortOverride);
+          if (p1res.ok) {
+            const p1doc = new DOMParser().parseFromString(await p1res.text(), 'text/html');
+            rowEls = p1doc.querySelectorAll('[id^="articleRow"].article-row, .article-row');
+            if (rowEls.length) {
+              console.log(`[CM] ${label} page 1 retry recovered ${rowEls.length} rows`);
+              expectedListings = extractExpectedListingCount(p1doc);
+              let maxP = 0;
+              p1doc.querySelectorAll('a[href*="site="]').forEach(a => {
+                const mm = (a.getAttribute('href') || '').match(/[?&]site=(\d+)/);
+                if (mm) maxP = Math.max(maxP, parseInt(mm[1], 10));
+              });
+              totalPagesSeen = maxP || 1;
+              if (!filter.idExpansion) detectedTotalPages = maxP || detectedTotalPages;
+            }
+          }
+          if (!rowEls.length) {
+            if (!debugSnippet) debugSnippet = (doc.querySelector('.table-body')?.outerHTML || doc.body?.innerHTML || html).slice(0, 2000);
+            break;
+          }
+          // fall through: recovered rows get processed below
+        } else if (page === 1) {
           if (!debugSnippet) debugSnippet = (doc.querySelector('.table-body')?.outerHTML || doc.body?.innerHTML || html).slice(0, 2000);
           break;
+        } else {
+          emptyStreak++;
+          if (emptyStreak >= 2) break;
+          page++;
+          if (delay) await sleep(delay);
+          continue;
         }
-        emptyStreak++;
-        if (emptyStreak >= 2) break;
-        page++;
-        if (delay) await sleep(delay);
-        continue;
       }
       emptyStreak = 0;
 
@@ -833,11 +897,18 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
         const row = parseRow(el);
         if (!row.articleId) {
           if (row.name || row.price) {
-            rows.push(row);
-            added++;
-            localAdded++;
-            anonymousObserved++;
-            passAddedThisPage++;
+            // v2.2.12: dedup anonymous rows globally so a re-scan can't duplicate them
+            const anonKey = (row.name || '') + '|' + (row.expansionCode || '') + '|' + (row.price || '') + '|' + (row.condition || '') + '|' + (row.comments || '');
+            if (!anonSeen.has(anonKey)) {
+              anonSeen.add(anonKey);
+              rows.push(row);
+              added++;
+              localAdded++;
+              anonymousObserved++;
+              passAddedThisPage++;
+            } else {
+              passDupedThisPage++;
+            }
           }
           return;
         }
@@ -993,14 +1064,21 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
   const LANG_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
   const COND_IDS = [1, 2, 3, 4, 5, 6, 7];
 
-  const scrapeWithCascade = async (baseFilter, label, expIdx, expTotal, expName) => {
-    const r1 = await scrapeScope(baseFilter, label, expIdx, expTotal, expName);
-    if (!r1.capSuspect) return r1.added;
+  const scrapeWithCascade = async (baseFilter, label, expIdx, expTotal, expName, force = false) => {
+    // v2.2.12: force=true (completeness recovery) skips the redundant broad r1 pass
+    // and goes straight to the language/condition/reverseHolo subdivision, which
+    // reliably re-fetches every listing the primary sort may have dropped.
+    let baseAdded = 0;
+    if (!force) {
+      const r1 = await scrapeScope(baseFilter, label, expIdx, expTotal, expName);
+      if (!r1.capSuspect) return r1.added;
+      baseAdded = r1.added;
+    }
 
     if (!baseFilter.idLanguage) {
-      console.warn(`[CM] ${label} cap/gap-suspect (${r1.added} new rows). Cascading by language...`);
-      writeProgress({ lastErr: `${label}: cap/gap suspect, split by language` });
-      let totalAdded = r1.added;
+      console.warn(`[CM] ${label} ${force ? 'forced completeness re-scan' : 'cap/gap-suspect'} — cascading by language...`);
+      writeProgress({ lastErr: `${label}: ${force ? 'completeness recovery' : 'cap/gap suspect'}, split by language` });
+      let totalAdded = baseAdded;
       for (const langId of LANG_IDS) {
         if (window.__cmExportStop) break;
         const filter = { ...baseFilter, idLanguage: langId };
@@ -1034,7 +1112,7 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
       }
       return totalAdded;
     }
-    return r1.added;
+    return baseAdded;
   };
 
   const extractExpansionIds = async () => {
@@ -1101,6 +1179,13 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
     // Leerer Array = kein Filter (alle Sprachen, normales Verhalten)
     const langLoop = (cardLangIds && cardLangIds.length > 0) ? cardLangIds : [null];
 
+    // v2.2.12: per-expansion completeness tracking. The idExpansion dropdown carries
+    // Cardmarket's own per-set CARD counts, so we accumulate captured cards per set
+    // and reconcile against those counts after all passes.
+    const expExpected = {};   // id -> { name, labelCount }
+    const expObserved = {};   // id -> cards captured so far (sum of Amount)
+    const langFilterActive = !!(cardLangIds && cardLangIds.length > 0);
+
     for (let li = 0; li < langLoop.length; li++) {
       if (window.__cmExportStop) break;
       const langId = langLoop[li];
@@ -1129,7 +1214,13 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
         } else {
           for (let i = 0; i < expansions.length; i++) {
             if (window.__cmExportStop) break;
-            const { id, name } = expansions[i];
+            const { id, name, labelCount } = expansions[i];
+            if (!(id in expExpected)) expExpected[id] = { name, labelCount };
+            // v2.2.12: a set Cardmarket reports as exactly 0 cards has nothing to scrape —
+            // skip it (and its otherwise-retried empty page 1). Only for a real 0, never
+            // for an unknown count (null), which still gets scraped normally.
+            if (labelCount === 0) { if (!(id in expObserved)) expObserved[id] = 0; continue; }
+            const beforeLen = rows.length;
             try {
               // v2.1: scrapeWithCascade prüft cap und splittet automatisch tiefer falls nötig
               await scrapeWithCascade(
@@ -1142,6 +1233,10 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
               console.error(`[CM] Expansion ${id} (${name})${langTag} fehlgeschlagen:`, e);
               writeProgress({ lastErr: `${name}${langTag}: ${e.message}` });
             }
+            // v2.2.12: tally cards captured for this expansion (summed across language passes)
+            let addedCards = 0;
+            for (let k = beforeLen; k < rows.length; k++) addedCards += (parseInt(rows[k].amountDisplay || rows[k].amount, 10) || 0);
+            expObserved[id] = (expObserved[id] || 0) + addedCards;
             if (delay) await sleep(delay);
           }
         }
@@ -1149,11 +1244,70 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
         await scrapeWithCascade(langBaseFilter, 'ALL' + langTag, 1, 1, 'ALL');
       }
     }
+
+    // v2.2.12: Stock completeness self-check. The idExpansion dropdown carries
+    // Cardmarket's own per-set CARD counts ("Reisegefährten (913)") in EVERY UI
+    // language — a language-independent source of truth, unlike the "Ergebnisse/
+    // Results" counter that simply does not exist on the German stock UI. Any set
+    // that came up short gets one forced completeness re-scan; whatever is still
+    // short afterwards is reported explicitly, so a gap can never be silent again.
+    // Skipped when a page cap or a language filter makes the counts non-comparable.
+    let completeness = null;
+    const canCheckCompleteness = perExpansion && !maxPages && !langFilterActive && Object.keys(expExpected).length > 0;
+    if (canCheckCompleteness && !window.__cmExportStop) {
+      const shortfalls = [];
+      for (const id of Object.keys(expExpected)) {
+        const { name, labelCount } = expExpected[id];
+        if (labelCount == null) continue;
+        if ((expObserved[id] || 0) < labelCount) shortfalls.push({ id, name });
+      }
+      for (const sf of shortfalls) {
+        if (window.__cmExportStop) break;
+        writeProgress({ status: 'completeness recovery', lastErr: `${sf.name}: ${expObserved[sf.id] || 0}/${expExpected[sf.id].labelCount} — Nachladen` });
+        const beforeLen = rows.length;
+        try {
+          await scrapeWithCascade({ idExpansion: sf.id }, `${sf.name} ⟳`, null, null, sf.name, true);
+        } catch (e) {
+          if (e.message === 'Abgebrochen') break;
+          console.error(`[CM] completeness re-scan ${sf.id} (${sf.name}) failed:`, e);
+        }
+        let addedCards = 0;
+        for (let k = beforeLen; k < rows.length; k++) addedCards += (parseInt(rows[k].amountDisplay || rows[k].amount, 10) || 0);
+        expObserved[sf.id] = (expObserved[sf.id] || 0) + addedCards;
+        if (delay) await sleep(delay);
+      }
+      // v2.2.12: if the user aborted mid-recovery, observed counts are partial —
+      // don't publish a "still missing / complete" verdict built on truncated data.
+      if (!window.__cmExportStop) {
+        let expectedTotal = 0, observedTotal = 0, checked = 0, uncounted = 0;
+        const stillShort = [];
+        for (const id of Object.keys(expExpected)) {
+          const { name, labelCount } = expExpected[id];
+          if (labelCount == null) { uncounted++; continue; }
+          checked++;
+          expectedTotal += labelCount;
+          const obs = expObserved[id] || 0;
+          observedTotal += obs;
+          if (obs < labelCount) stillShort.push({ name, expected: labelCount, observed: obs, missing: labelCount - obs });
+        }
+        stillShort.sort((a, b) => b.missing - a.missing);
+        completeness = {
+          expectedTotal,
+          observedTotal,
+          missingTotal: stillShort.reduce((s, x) => s + x.missing, 0),
+          checkedExpansions: checked,
+          uncountedExpansions: uncounted,
+          recovered: shortfalls.length - stillShort.length,
+          shortfalls: stillShort,
+        };
+      }
+    }
+
     writeProgress({ status: 'done' });
-    return { rows, pagesScanned, debugSnippet, detectedTotalPages, recoveryStats, aborted: !!window.__cmExportStop };
+    return { rows, pagesScanned, debugSnippet, detectedTotalPages, recoveryStats, completeness, aborted: !!window.__cmExportStop };
   } catch (e) {
     writeProgress({ status: 'error', lastErr: e.message });
-    return { error: e.message, rows, pagesScanned, debugSnippet, detectedTotalPages, recoveryStats, aborted: !!window.__cmExportStop };
+    return { error: e.message, rows, pagesScanned, debugSnippet, detectedTotalPages, recoveryStats, completeness: null, aborted: !!window.__cmExportStop };
   }
 }
 

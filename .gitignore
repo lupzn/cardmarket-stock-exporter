@@ -40,3 +40,25 @@ FEEDBACK.md
 *.mp4
 *.mov
 *.wav
+
+# social-pipeline (private — contains stock data, images, IG tokens)
+social-pipeline/cache/
+social-pipeline/output/
+social-pipeline/.env
+social-pipeline/META_API_SETUP.md
+social-pipeline/n8n-cardmarket-workflow.json
+social-pipeline/parse-counter-tolerant.js
+# music tracks (large + keep licensing clean) — but keep the README
+social-pipeline/audio/tracks/*.mp3
+social-pipeline/audio/tracks/*.wav
+social-pipeline/audio/tracks/*.m4a
+
+# Python (Pi port) — runtime artifacts, keep the .py source
+social-pipeline/venv/
+social-pipeline/__pycache__/
+social-pipeline/**/__pycache__/
+social-pipeline/*.log
+
+# n8n workflow (contains LUPZN tax-number — never commit)
+n8n-cardmarket-workflow.json
+parse-counter-tolerant.js

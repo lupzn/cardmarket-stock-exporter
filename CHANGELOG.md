@@ -6,6 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), version
 
 ---
 
+## [2.2.12] — 2026-08-23
+
+### Fixed
+
+- **Whole expansions could silently drop out of an export.** A transient empty/challenge response on the *first* page of a set's stock view returned zero rows without erroring — and unlike pages 2+, page 1 was never retried — so the entire set vanished from the CSV with no warning (a real case lost a 913-card set). Page 1 now retries once, like the other pages.
+
+### Added
+
+- **Stock completeness self-check.** After a full export, the tool now reconciles what it captured against Cardmarket's own per-set card counts (the `(N)` numbers in the expansion dropdown, e.g. `Journey Together (913)`). These numbers are identical in every Cardmarket UI language, so unlike the previous "Results" counter — which does not exist on the **German** stock UI, leaving German-language exports unprotected — this check works regardless of language. Any set that came up short gets one automatic re-scan (forced language/condition/reverse-holo subdivision), and the log ends with a clear verdict: `✓ all 36,116 cards across 151 sets exported completely`, or an explicit list of which sets are still short. **Silent under-counts are no longer possible.**
+
+  This closes the gap behind the v2.2.11 recovery on non-English/Spanish UIs, where the result-counter it relied on was never present.
+
+---
+
 ## [2.2.11] — 2026-08-10
 
 ### Fixed
