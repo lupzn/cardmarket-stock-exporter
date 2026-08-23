@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), version
 
 ---
 
+## [2.3.1] — 2026-08-23
+
+Polish found while preparing the new store screenshots.
+
+### Fixed
+
+- **Three labels stayed German on an English interface**: the "fetching" state on the confirm button, the `CARDS` column header in both set lists, and the want-list progress line.
+- **Sets you hold no cards in are no longer listed** in the set picker. Cardmarket's dropdown includes every expansion, so entries like `Arceus 0` showed up in a list where they could not be selected. The export already skipped them; now they are hidden and counted in the log.
+- **The set picker uses the v2.3.0 palette.** It still carried the colours of the old interface and stood out against everything around it.
+
+---
+
 ## [2.3.0] — 2026-08-23
 
 Every game Cardmarket sells is now exportable, and along the way several things the export and Bulk-Update relied on turned out to be wrong. Two of them were changing your listings without telling you. Prompted by a store review from Andreas Gast, who pointed out that Cardmarket had outgrown the eight games this extension offered. Thank you!

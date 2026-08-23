@@ -275,25 +275,34 @@ function updateExportSetsBtn() {
   btnExportSets.disabled = n === 0;
 }
 
-function renderSetPicker(sets) {
+function renderSetPicker(allSets) {
+  // v2.3.0: Sets ohne Bestand ausblenden. Cardmarkets Dropdown fuehrt jede Erweiterung auf,
+  // auch die mit null Karten — die stehen dann als "Arceus 0" in der Liste, lassen sich nicht
+  // exportieren (der Export ueberspringt sie ohnehin) und verwaessern nur die Auswahl.
+  // Unbekannte Kartenzahl (null) bleibt drin, die koennte Bestand haben.
+  const hidden = (allSets || []).filter(s => s.count === 0).length;
+  const sets = (allSets || []).filter(s => s.count !== 0);
+  if (hidden > 0) {
+    log(tl(`${hidden} Set(s) ohne Bestand ausgeblendet.`, `${hidden} set(s) with no stock hidden.`));
+  }
   if (!sets || sets.length === 0) {
     setExportList.style.display = 'none';
     setExportControls.style.display = 'none';
     log(t('log_no_sets_found'), 'err');
     return;
   }
-  const header = `<div style="display:flex;align-items:center;gap:6px;padding:3px 5px;font-size:9px;color:#888;border-bottom:1px solid #444;font-weight:600;position:sticky;top:0;background:#0f0f0f">
+  const header = `<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;font-size:9.5px;color:var(--fg-faint);border-bottom:1px solid var(--line);font-weight:600;letter-spacing:.06em;position:sticky;top:0;background:var(--sunken)">
       <span style="width:14px"></span>
       <span style="flex:1">SET</span>
-      <span style="min-width:60px;text-align:right">KARTEN</span>
+      <span style="min-width:60px;text-align:right">${tl('KARTEN', 'CARDS')}</span>
     </div>`;
   const rowsHtml = sets.map(s => {
     const safeId = 'setx_' + String(s.id).replace(/[^a-zA-Z0-9]/g, '_');
     const countTxt = (s.approx ? '~' : '') + (s.count != null ? s.count : '?');
-    return `<label style="display:flex;align-items:center;gap:6px;padding:3px 5px;margin:0;border-bottom:1px solid #1a1a1a;cursor:pointer">
+    return `<label style="display:flex;align-items:center;gap:6px;padding:5px 8px;margin:0;border-bottom:1px solid var(--line-soft);cursor:pointer">
       <input type="checkbox" id="${safeId}" data-set-id="${escSetHtml(s.id)}" data-set-name="${escSetHtml(s.name)}" style="width:14px;height:14px;flex-shrink:0">
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escSetHtml(s.name)}</span>
-      <span style="color:#fbbf24;font-weight:600;min-width:60px;text-align:right;font-size:12px">${countTxt}</span>
+      <span style="color:var(--warn);font-weight:600;min-width:60px;text-align:right;font-size:12px;font-variant-numeric:tabular-nums">${countTxt}</span>
     </label>`;
   }).join('');
   setExportList.innerHTML = header + rowsHtml;
@@ -1984,11 +1993,11 @@ btnAnalyze.addEventListener('click', async () => {
     const sortedSets = Object.entries(preFetchSetGroups).sort((a, b) => b[1].length - a[1].length);
     const escHtmlPre = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     preFetchList.innerHTML = `
-      <div style="display:flex;align-items:center;gap:6px;padding:3px 4px;margin:0;font-size:9px;color:#888;border-bottom:1px solid #444;font-weight:600">
+      <div style="display:flex;align-items:center;gap:6px;padding:5px 7px;margin:0;font-size:9.5px;color:var(--fg-faint);border-bottom:1px solid var(--line);font-weight:600;letter-spacing:.06em">
         <span style="width:14px"></span>
         <span style="flex:1">SET</span>
         <span style="min-width:60px;text-align:right">EDITS</span>
-        <span style="min-width:60px;text-align:right">KARTEN</span>
+        <span style="min-width:60px;text-align:right">${tl('KARTEN', 'CARDS')}</span>
       </div>
     ` + sortedSets.map(([exp, items]) => {
       const safeId = 'setf_' + exp.replace(/[^a-zA-Z0-9]/g, '_');
@@ -2002,7 +2011,7 @@ btnAnalyze.addEventListener('click', async () => {
         <input type="checkbox" id="${safeId}" data-set="${escHtmlPre(exp)}" checked style="width:14px;height:14px;flex-shrink:0">
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtmlPre(exp)}</span>
         <span style="color:#6ee7b7;font-weight:600;min-width:60px;text-align:right;font-size:12px">${items.length}</span>
-        <span style="color:#fbbf24;font-weight:600;min-width:60px;text-align:right;font-size:12px">${totalCards}</span>
+        <span style="color:var(--warn);font-weight:600;min-width:60px;text-align:right;font-size:12px;font-variant-numeric:tabular-nums">${totalCards}</span>
       </label>`;
     }).join('');
     preFetchContainer.style.display = 'block';
@@ -2021,7 +2030,7 @@ btnAnalyze.addEventListener('click', async () => {
       await new Promise(resolve => {
         btnConfirm.addEventListener('click', () => {
           btnConfirm.disabled = true;
-          btnConfirm.textContent = 'Fetch läuft...';
+          btnConfirm.textContent = tl('Fetch läuft…', 'Fetching…');
           resolve();
         }, { once: true });
       });
@@ -3533,7 +3542,10 @@ btnWantsExport.addEventListener('click', async () => {
         if (!p) return;
         const pct = p.totalLists ? Math.round((p.listIdx / p.totalLists) * 100) : 0;
         wantsProgFillEl.style.width = pct + '%';
-        wantsProgTextEl.textContent = `Liste ${p.listIdx || 0}/${p.totalLists || '?'} ${p.listName || ''} | Seite ${p.page || 0} | Zeilen ${p.rowsTotal || 0}`;
+        wantsProgTextEl.textContent = tl(
+          `Liste ${p.listIdx || 0}/${p.totalLists || '?'} ${p.listName || ''} | Seite ${p.page || 0} | Zeilen ${p.rowsTotal || 0}`,
+          `List ${p.listIdx || 0}/${p.totalLists || '?'} ${p.listName || ''} | Page ${p.page || 0} | Rows ${p.rowsTotal || 0}`
+        );
       } catch {}
     }, 800);
 

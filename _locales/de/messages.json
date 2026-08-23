@@ -578,5 +578,8 @@
   },
   "support_rate": {
     "message": "Bewerten"
+  },
+  "locale_hint": {
+    "message": "Bestimmt, in welcher Sprache Cardmarket die Set- und Kartennamen liefert — also auch die Inhalte deiner CSV. Unabhängig von der Sprache dieser Oberfläche."
   }
 }

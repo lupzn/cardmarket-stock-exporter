@@ -578,5 +578,8 @@
   },
   "support_rate": {
     "message": "Rate it"
+  },
+  "locale_hint": {
+    "message": "Controls the language Cardmarket returns set and card names in, and therefore what ends up in your CSV. Independent of this popup’s language."
   }
 }

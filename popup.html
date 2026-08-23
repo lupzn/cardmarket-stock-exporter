@@ -218,8 +218,11 @@
  <!-- v2.3.0: Die CM-Locale stand frueher als eigene Zeile ganz unten. Hier oben neben dem Spiel
       gehoert sie inhaltlich hin (beides bestimmt den Cardmarket-Pfad) und spart eine ganze Zeile. -->
  <div style="flex:1">
-  <label><span data-i18n="locale_label">CM-UI Locale:</span> <span id="localeAutoNote" style="color:var(--ok)" data-i18n="locale_auto">auto</span></label>
-  <select id="lang">
+  <!-- v2.3.0: klarer beschriftet. "CM-UI Locale" liess offen, dass hierueber die Set- und
+       Kartennamen laufen — Nutzer hielten die Oberflaechensprache oben rechts dafuer zustaendig
+       und wunderten sich ueber deutsche Set-Namen bei englischer Oberflaeche. -->
+  <label title="" data-i18n-title="locale_hint"><span data-i18n="locale_label">CM-UI Locale:</span> <span id="localeAutoNote" style="color:var(--ok)" data-i18n="locale_auto">auto</span></label>
+  <select id="lang" title="" data-i18n-title="locale_hint">
     <option value="de">/de/</option>
     <option value="en">/en/</option>
     <option value="fr">/fr/</option>
