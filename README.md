@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <sub>✅ v2.3.0 — all 20 Cardmarket games and all 17 card languages, plus fixes for two bugs that could change a listing's language or condition during Bulk-Update. If you have bulk-updated non-German listings before, see the changelog.</sub>
+  <sub>✅ v2.3.1 — all 20 Cardmarket games and all 17 card languages, plus fixes for two bugs that could change a listing's language or condition during Bulk-Update. If you have bulk-updated non-German listings before, see the changelog.</sub>
 </p>
 
 <p align="center">
@@ -36,8 +36,10 @@ Tested on collections with **19,000+ cards**. Works reliably.
 
 ### 📥 Stock Export
 - **Full stock export** — handles 20,000+ cards without issues
-- **8 Games supported** — Pokémon, Magic, YuGiOh, Lorcana, One Piece, Flesh and Blood, Dragon Ball Super, Digimon
-- **5 Languages** — German (`/de/`), English (`/en/`), French (`/fr/`), Spanish (`/es/`), Italian (`/it/`)
+- **Every game Cardmarket sells** *(v2.3)* — all 20 of them, each with its own variant filters (Reverse Holo, Foil, First Edition, With Die, Full Art, Uber Rare — whichever that game actually has)
+- **All 17 card languages** *(v2.3)* — individually filterable
+- **5 Cardmarket site locales** — `/de/`, `/en/`, `/fr/`, `/es/`, `/it/`. Determines the language of set and card names in your CSV
+- **Stock completeness check** *(v2.2.12)* — reconciles the export against Cardmarket's own per-set card counts and names any set that came up short
 - **Live progress bar** — current expansion, page number, running total
 - **Cancel button** — abort mid-export, keep what was already collected
 - **Auto-calculates total value** — unit price × quantity per row + grand total
@@ -67,7 +69,7 @@ Tested on collections with **19,000+ cards**. Works reliably.
 - 🌐 **German / English UI** *(v2.2)* — auto-detected from your browser language, plus a manual toggle (Auto / 🇩🇪 DE / 🇬🇧 EN) in the popup. Bulk-Update status messages follow the selected UI language *(v2.2.6)*.
 - 📌 **Pin to window** — detach popup so it stays open during long operations
 - 🌍 Auto-detect card language + game from current tab
-- **CSV header metadata** *(new in v2.1)* — files start with a `# CMSE-META | ...` line carrying export timestamp + locale + game + tool version. Used for tab-mismatch + stale-export detection.
+- **Metadata in the filename** *(v2.1)* — exports are named `cardmarket-stock-{date}-{locale}-{game}-v{version}.csv`. Bulk-Update reads it back for tab-mismatch and stale-export warnings. It used to be a comment line inside the file, but Excel mangled it on re-save.
 
 ## 📋 CSV Columns (Stock Export)
 
@@ -85,6 +87,9 @@ Tested on collections with **19,000+ cards**. Works reliably.
 | `Condition` | Short condition (NM, EX, LP, ...) |
 | `ConditionFull` | Full condition name (Near Mint, ...) |
 | `ReverseHolo` | Y if Reverse Holo, N otherwise |
+| `Foil` *(v2.2.10)* | Y if Foil |
+| `FirstEd` / `Signed` / `Altered` / `Playset` *(v2.2.9)* | Variant flags (Y/N), read from the listing's icons |
+| `FullArt` / `UberRare` / `WithDie` *(v2.3)* | Variant flags for Force of Will and Star Wars: Destiny. `N` for every other game |
 | `Comments` | Your listing comments — **editable** for Bulk-Update |
 | `_OriginalComments` *(v2.1)* | **Read-only reference** — leave untouched. Used for Skip-Fetch optimization (compares against `Comments` to detect user edits → fetches Cardmarket only for changed rows → drastically reduces Cloudflare load). |
 | `Price_EUR` | Unit price in EUR — **editable** for Bulk-Update |
@@ -92,8 +97,10 @@ Tested on collections with **19,000+ cards**. Works reliably.
 | `Amount` | Quantity in stock |
 | `Total_EUR` | Price × Amount |
 | `ProductUrl` | Direct link to the card on Cardmarket |
+| `ImageUrl` | Direct link to the card image |
+| `delete` | Set to `Y` to remove the listing during Bulk-Update. Default `N` |
 
-The CSV starts with a metadata comment line like `# CMSE-META | exported=2026-04-29T... | lang=en | game=Magic | tool=v2.1.0`. It's parsed automatically by the Bulk-Update flow for tab-mismatch and stale-export detection. Excel and Sheets ignore it as a comment row.
+Export metadata (timestamp, locale, game, tool version) lives in the **filename**, not inside the file. Bulk-Update parses it from there.
 
 ## 📋 CSV Columns (Want-Lists Export, v2.1)
 
