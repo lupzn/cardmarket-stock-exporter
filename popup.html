@@ -3,94 +3,238 @@
 <head>
 <meta charset="utf-8">
 <style>
-  body { font-family: system-ui, sans-serif; width: 560px; padding: 12px; background:#1a1a1a; color:#eee; margin:0; min-height: 700px; }
-  body.detached { width: auto; min-width: 560px; max-width: none; resize: both; overflow: auto; }
-  h3 { margin: 0 0 6px; font-size: 15px; }
-  .hint { font-size: 11px; color:#aaa; margin-bottom: 10px; line-height: 1.4; }
-  button { width: 100%; padding: 9px; font-size: 13px; background:#2563eb; color:#fff; border:0; border-radius:4px; cursor:pointer; margin-bottom:6px; }
-  button.secondary { background:#444; }
-  button:disabled { background:#555; cursor:wait; }
-  #status { margin-top: 10px; font-size: 11px; max-height: 320px; overflow-y:auto; background:#0f0f0f; padding:6px; border-radius:3px; font-family: monospace; }
-  body.detached #status { max-height: 60vh; }
-  .err { color:#f87171; }
-  .ok { color:#6ee7b7; }
-  label { font-size: 11px; display:block; margin-bottom:4px; margin-top:4px; }
-  input[type=number], select { width: 100%; padding:5px; background:#0f0f0f; color:#eee; border:1px solid #444; border-radius:3px; box-sizing:border-box; }
-  .row2 { display:flex; gap:8px; }
+  /* v2.3.0 — Oberflaeche ueberarbeitet: eigene Icons statt Emoji, ruhigere Farben,
+     klarere Abstufung zwischen Flaeche, Karte und Eingabefeld. */
+  :root {
+    --bg:#0e1013; --panel:#161a1f; --panel-2:#1c2128; --sunken:#0a0c0f;
+    --line:#252b34; --line-soft:#1d222a;
+    --fg:#e6e8ec; --fg-dim:#98a0ac; --fg-faint:#5d6672;
+    --accent:#3b82f6; --accent-hi:#4f8ff7; --violet:#a855f7;
+    --ok:#4ade80; --err:#f87171; --warn:#fbbf24;
+  }
+  * { box-sizing:border-box; }
+  body {
+    font-family:'Segoe UI', system-ui, -apple-system, sans-serif;
+    width:560px; padding:12px 14px; background:var(--bg); color:var(--fg);
+    margin:0; font-size:12px; line-height:1.4;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* v2.3.0: KEIN min-height mehr. Chrome deckelt Extension-Popups hart bei 600px Hoehe —
+     eine Mindesthoehe von 700px hat die Scrollleiste also garantiert erzwungen, statt sie
+     zu vermeiden. Ohne sie waechst das Popup nur so weit, wie der Inhalt es braucht. */
+  body.detached { width:auto; min-width:560px; max-width:none; min-height:100vh; resize:both; overflow:auto; }
+  h3 { margin:0; font-size:14px; font-weight:600; letter-spacing:-0.01em; }
+  .hint { font-size:11px; color:var(--fg-dim); margin-bottom:12px; line-height:1.5; }
+  .hint b { color:var(--fg); font-weight:600; }
+
+  /* Icons */
+  .ico { width:14px; height:14px; flex:0 0 auto; stroke:currentColor; fill:none;
+         stroke-width:1.75; stroke-linecap:round; stroke-linejoin:round; }
+  .ico-sm { width:12px; height:12px; }
+
+  button {
+    width:100%; padding:9px 12px; font-size:12.5px; font-weight:550;
+    background:var(--accent); color:#fff; border:0; border-radius:6px;
+    cursor:pointer; margin-bottom:7px; font-family:inherit;
+    display:inline-flex; align-items:center; justify-content:center; gap:7px;
+    transition:background .12s ease;
+  }
+  button:hover:not(:disabled) { background:var(--accent-hi); }
+  button.secondary { background:var(--panel-2); color:var(--fg); border:1px solid var(--line); }
+  button.secondary:hover:not(:disabled) { background:#232932; }
+  button:disabled { background:#22262c; color:var(--fg-faint); cursor:default; }
+  button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+  #status { margin-top:12px; font-size:11px; max-height:320px; overflow-y:auto;
+            background:var(--sunken); padding:8px 10px; border:1px solid var(--line-soft);
+            border-radius:6px; font-family:'Cascadia Mono', Consolas, monospace; line-height:1.55; }
+  body.detached #status { max-height:60vh; }
+  .err { color:var(--err); }
+  .ok { color:var(--ok); }
+
+  label { font-size:11px; display:block; margin-bottom:5px; margin-top:6px; color:var(--fg-dim); }
+  input[type=number], select {
+    width:100%; padding:7px 9px; background:var(--sunken); color:var(--fg);
+    border:1px solid var(--line); border-radius:6px; font-size:12px; font-family:inherit;
+  }
+  input[type=number]:focus, select:focus { outline:none; border-color:var(--accent); }
+  input[type=checkbox] { accent-color:var(--accent); width:13px; height:13px; margin:0; cursor:pointer; }
+  .row2 { display:flex; gap:10px; }
   .row2 > div { flex:1; }
   .row2 label { margin-top:0; }
-  .opts { display:flex; align-items:center; gap:6px; margin: 6px 0; font-size:11px; }
-  .donation { margin-top: 12px; text-align:center; font-size:11px; color:#aaa; border-top: 1px solid #333; padding-top:10px; }
-  .donation a { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; background:#ffc439; color:#003087; text-decoration:none; border-radius:4px; font-weight:600; font-size:11px; }
-  .donation a:hover { background:#ffb200; }
-  .brand { display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:8px; border-top:1px solid #222; font-size:10px; color:#555; }
-  .brand .logo { font-family: 'Segoe UI', system-ui, sans-serif; font-weight: 800; letter-spacing: 2px; font-size: 11px; background: linear-gradient(90deg, #2563eb, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-  .brand a { color: #555; text-decoration: none; }
-  .brand a:hover { color: #a855f7; }
-  .tabs { display:flex; gap:4px; margin-bottom:10px; border-bottom:1px solid #333; }
-  .tab { flex:1; padding:8px; background:transparent; color:#888; border:0; border-bottom:2px solid transparent; cursor:pointer; font-size:12px; border-radius:0; margin:0; }
-  .tab.active { color:#fff; border-bottom-color:#2563eb; background:transparent; }
+  .opts { display:flex; align-items:center; gap:8px; margin:7px 0; font-size:11px; color:var(--fg-dim); }
+  .opts b { color:var(--fg); font-weight:600; }
+  .opts label { margin:0; display:flex; align-items:center; gap:8px; cursor:pointer; }
+
+  /* Kopfzeile */
+  .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:10px; }
+  .topbar .title { display:flex; align-items:center; gap:8px; min-width:0; }
+  .topbar .mark { width:22px; height:22px; border-radius:6px; flex:0 0 auto;
+                  background:linear-gradient(135deg, var(--accent), var(--violet));
+                  display:flex; align-items:center; justify-content:center; color:#fff; }
+  .topbar .mark .ico { width:13px; height:13px; stroke-width:2; }
+  .btn-icon { width:auto; margin:0; padding:6px 10px; font-size:11px; background:var(--panel-2);
+              border:1px solid var(--line); color:var(--fg-dim); }
+  .btn-icon:hover:not(:disabled) { background:#232932; color:var(--fg); }
+
+  /* Tabs */
+  .tabs { display:flex; gap:2px; margin-bottom:14px; border-bottom:1px solid var(--line); }
+  .tab { flex:1; padding:9px 8px; background:transparent; color:var(--fg-faint); border:0;
+         border-bottom:2px solid transparent; cursor:pointer; font-size:12px; font-weight:550;
+         border-radius:0; margin:0; gap:6px; }
+  .tab:hover { color:var(--fg-dim); background:transparent; }
+  .tab.active { color:var(--fg); border-bottom-color:var(--accent); background:transparent; }
   .section { display:none; }
   .section.active { display:block; }
-  .diffTable { width:100%; font-size:10px; max-height:280px; overflow-y:auto; background:#0f0f0f; padding:6px; border-radius:3px; font-family:monospace; margin-top:6px; }
-  body.detached .diffTable { max-height: 50vh; }
-  body.detached #setFilterList { max-height: 50vh; }
-  body.detached #updateLog { max-height: 40vh !important; }
-  body.detached #wantsLog { max-height: 40vh !important; }
+
+  .diffTable { width:100%; font-size:10.5px; max-height:280px; overflow-y:auto;
+               background:var(--sunken); padding:8px; border:1px solid var(--line-soft);
+               border-radius:6px; font-family:'Cascadia Mono', Consolas, monospace; margin-top:8px; }
+  body.detached .diffTable { max-height:50vh; }
+  body.detached #setFilterList { max-height:50vh; }
+  body.detached #updateLog { max-height:40vh !important; }
+  body.detached #wantsLog { max-height:40vh !important; }
   .diffTable table { width:100%; border-collapse:collapse; }
-  .diffTable td { padding:2px 4px; border-bottom:1px solid #222; }
-  .diffUp { color:#6ee7b7; }
-  .diffDown { color:#f87171; }
-  .diffSame { color:#555; }
-  .warn { background:#7f1d1d; color:#fecaca; padding:8px; border-radius:3px; font-size:11px; margin:8px 0; }
-  #fileCsv, #fileWantsCsv { padding:8px; background:#0f0f0f; color:#eee; border:1px dashed #444; border-radius:3px; width:100%; box-sizing:border-box; font-size:11px; }
-  .ui-lang-toggle { display:flex; align-items:center; gap:4px; font-size:10px; }
-  .ui-lang-toggle select { padding:2px 4px; font-size:10px; width:auto; }
+  .diffTable td { padding:3px 5px; border-bottom:1px solid var(--line-soft); }
+  .diffUp { color:var(--ok); }
+  .diffDown { color:var(--err); }
+  .diffSame { color:var(--fg-faint); }
+  .warn { background:rgba(248,113,113,.1); border:1px solid rgba(248,113,113,.3);
+          color:#fca5a5; padding:9px 11px; border-radius:6px; font-size:11px; margin:9px 0; }
+  #fileCsv, #fileWantsCsv { padding:9px; background:var(--sunken); color:var(--fg-dim);
+          border:1px dashed var(--line); border-radius:6px; width:100%; font-size:11px; }
+  #fileCsv:hover, #fileWantsCsv:hover { border-color:var(--accent); }
+  .ui-lang-toggle select { padding:5px 7px; font-size:11px; width:auto; }
+  .langbox > summary { font-size:11px; color:var(--fg-dim); cursor:pointer; list-style:none;
+                       padding:6px 9px; background:var(--panel); border:1px solid var(--line);
+                       border-radius:6px; display:flex; align-items:center; gap:6px; }
+  .langbox > summary:hover { color:var(--fg); }
+  .langbox > summary::-webkit-details-marker { display:none; }
+  .langbox > summary::before { content:'▸'; font-size:9px; color:var(--fg-faint); }
+  .langbox[open] > summary::before { content:'▾'; }
+  .langsum { color:var(--fg-faint); font-size:10px; margin-left:auto; }
+
+  /* Unterstuetzen */
+  .support { margin-top:14px; background:var(--panel); border:1px solid var(--line);
+             border-radius:8px; padding:12px 13px; }
+  .support .head { font-size:11.5px; color:var(--fg); font-weight:600; margin-bottom:3px; }
+  .support .sub { font-size:10.5px; color:var(--fg-dim); line-height:1.5; margin-bottom:10px; }
+  .support .acts { display:flex; gap:8px; }
+  .support .acts a { flex:1; display:inline-flex; align-items:center; justify-content:center;
+                     gap:6px; padding:8px 10px; border-radius:6px; text-decoration:none;
+                     font-size:11.5px; font-weight:600; transition:background .12s ease; }
+  .support .give { background:#ffc439; color:#0b2559; }
+  .support .give:hover { background:#ffb700; }
+  .support .rate { background:var(--panel-2); color:var(--fg); border:1px solid var(--line); }
+  .support .rate:hover { background:#232932; }
+
+  /* Fusszeile */
+  .footbar { margin-top:12px; padding-top:10px; border-top:1px solid var(--line-soft);
+             display:flex; align-items:center; justify-content:space-between; gap:10px;
+             font-size:10px; color:var(--fg-faint); }
+  .footbar .links { display:flex; align-items:center; gap:12px; }
+  .footbar a { color:var(--fg-faint); text-decoration:none; display:inline-flex;
+               align-items:center; gap:5px; }
+  .footbar a:hover { color:var(--fg-dim); }
+  .footbar .logo { font-weight:800; letter-spacing:1.5px; font-size:10.5px;
+    background:linear-gradient(90deg, var(--accent), var(--violet));
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+  .footbar .ver { font-variant-numeric:tabular-nums; color:var(--fg-faint); }
 </style>
 </head>
 <body>
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px">
-  <h3 style="margin:0" data-i18n="header_title">Cardmarket Stock → CSV</h3>
-  <div style="display:flex;gap:6px;align-items:center">
+<!-- v2.3.0: eigenes Icon-Set. Strichzeichnungen auf 16er-Raster, erben Farbe und Strichstaerke
+     vom Text, damit sie in jedem Zustand stimmig sitzen. Ersetzt die frueheren Emoji. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+  <symbol id="i-export" viewBox="0 0 16 16"><path d="M8 2v7"/><path d="M5 6.5 8 9.5l3-3"/><path d="M2.5 11v1.5A1.5 1.5 0 0 0 4 14h8a1.5 1.5 0 0 0 1.5-1.5V11"/></symbol>
+  <symbol id="i-update" viewBox="0 0 16 16"><path d="M11.4 2.6a1.6 1.6 0 0 1 2.3 2.3L6.5 12 3.5 13l1-3z"/><path d="M10.2 3.8 12.2 5.8"/></symbol>
+  <symbol id="i-wants" viewBox="0 0 16 16"><path d="M6 4h8"/><path d="M6 8h8"/><path d="M6 12h8"/><path d="M2.6 4h.01"/><path d="M2.6 8h.01"/><path d="M2.6 12h.01"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 16 16"><path d="M9.8 1.9 14.1 6.2"/><path d="M11.3 3.4 8.6 6.1a3 3 0 0 0-.8 1.5l-.2 1.1-2.4 2.4"/><path d="M12.6 4.7 9.9 7.4a3 3 0 0 1-1.5.8l-1.1.2"/><path d="M5.2 10.8 2.4 13.6"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 16 16"><path d="M8 13.2 3.1 8.5a2.9 2.9 0 0 1 4.1-4.1L8 5.2l.8-.8a2.9 2.9 0 0 1 4.1 4.1z"/></symbol>
+  <symbol id="i-star" viewBox="0 0 16 16"><path d="m8 2 1.8 3.8 4 .5-2.9 2.8.7 4L8 11.2 4.4 13.1l.7-4L2.2 6.3l4-.5z"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 16 16"><rect x="2" y="3.5" width="12" height="9" rx="1.5"/><path d="m2.6 4.6 4.6 3.5a1.3 1.3 0 0 0 1.6 0l4.6-3.5"/></symbol>
+  <symbol id="i-link" viewBox="0 0 16 16"><path d="M9 3h4v4"/><path d="M13 3 7.6 8.4"/><path d="M12 9.5V12a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 12V5.5A1.5 1.5 0 0 1 4 4h2.5"/></symbol>
+  <symbol id="i-card" viewBox="0 0 16 16"><rect x="2.2" y="3" width="11.6" height="10" rx="1.6"/><path d="M2.2 6.2h11.6"/><path d="M5 9.4h3"/></symbol>
+</defs></svg>
+
+<div class="topbar">
+  <div class="title">
+    <span class="mark"><svg class="ico"><use href="#i-card"/></svg></span>
+    <h3 data-i18n="header_title">Cardmarket Stock → CSV</h3>
+  </div>
+  <div style="display:flex;gap:7px;align-items:center">
     <div class="ui-lang-toggle">
       <select id="uiLang" title="UI Language">
-        <option value="auto">🌐 Auto</option>
-        <option value="de">🇩🇪 DE</option>
-        <option value="en">🇬🇧 EN</option>
+        <option value="auto">Auto</option>
+        <option value="de">DE</option>
+        <option value="en">EN</option>
       </select>
     </div>
-    <button id="detach" data-i18n-title="tooltip_pin" title="Im eigenen Fenster öffnen (schließt sich nicht versehentlich)" style="width:auto;padding:4px 8px;font-size:11px;background:#2563eb;margin:0"><span data-i18n="btn_pin">📌 Pin</span></button>
+    <button id="detach" class="btn-icon" data-i18n-title="tooltip_pin" title="Im eigenen Fenster öffnen (schließt sich nicht versehentlich)">
+      <svg class="ico ico-sm"><use href="#i-pin"/></svg><span data-i18n="btn_pin">Pin</span>
+    </button>
   </div>
 </div>
 <div class="hint" data-i18n-html="hint_main">
-Öffne zuerst eine <b>Stock/Offers</b>-Seite. Klick <b>📌 Pin</b> damit Popup nicht wegfliegt.
+Öffne zuerst eine <b>Stock/Offers</b>-Seite. Klick <b>Pin</b> damit Popup nicht wegfliegt.
 </div>
 
 <div class="tabs">
-  <button class="tab active" data-section="exportSection" data-i18n="tab_export">📥 Export</button>
-  <button class="tab" data-section="updateSection" data-i18n="tab_update">✏️ Bulk Update</button>
-  <button class="tab" data-section="wantsSection" data-i18n="tab_wants">📋 Wants</button>
+  <button class="tab active" data-section="exportSection"><svg class="ico ico-sm"><use href="#i-export"/></svg><span data-i18n="tab_export">Export</span></button>
+  <button class="tab" data-section="updateSection"><svg class="ico ico-sm"><use href="#i-update"/></svg><span data-i18n="tab_update">Bulk Update</span></button>
+  <button class="tab" data-section="wantsSection"><svg class="ico ico-sm"><use href="#i-wants"/></svg><span data-i18n="tab_wants">Wants</span></button>
 </div>
 
 <div id="exportSection" class="section active">
 
-<div>
+<div class="row2">
+ <div style="flex:2">
   <label data-i18n="label_game">Spiel</label>
+  <!-- v2.2.13: alle von Cardmarket unterstuetzten Spiele. Slugs = Cardmarket-Pfadsegment,
+       verifiziert gegen cardmarket.com (DigimonCardGame lieferte vorher 404). -->
   <select id="game">
     <option value="Pokemon">Pokémon</option>
     <option value="Magic">Magic</option>
-    <option value="YuGiOh">YuGiOh</option>
-    <option value="FleshAndBlood">FaB</option>
-    <option value="Lorcana">Lorcana</option>
+    <option value="YuGiOh">Yu-Gi-Oh!</option>
     <option value="OnePiece">One Piece</option>
-    <option value="DragonBallSuper">DBS</option>
-    <option value="DigimonCardGame">Digimon</option>
+    <option value="Lorcana">Lorcana</option>
+    <option value="Riftbound">Riftbound</option>
+    <option value="DragonBallSuper">Dragon Ball Super</option>
+    <option value="Digimon">Digimon</option>
+    <option value="FleshAndBlood">Flesh and Blood</option>
+    <option value="StarWarsUnlimited">Star Wars Unlimited</option>
+    <option value="FinalFantasy">Final Fantasy</option>
+    <option value="Vanguard">Cardfight!! Vanguard</option>
+    <option value="WeissSchwarz">Weiß Schwarz</option>
+    <option value="BattleSpiritsSaga">Battle Spirits Saga</option>
+    <option value="FoW">Force of Will</option>
+    <option value="WoW">World of Warcraft</option>
+    <option value="StarWarsDestiny">Star Wars: Destiny</option>
+    <option value="Dragoborne">Dragoborne</option>
+    <option value="MyLittlePony">My Little Pony</option>
+    <option value="Spoils">The Spoils</option>
   </select>
+ </div>
+ <!-- v2.3.0: Die CM-Locale stand frueher als eigene Zeile ganz unten. Hier oben neben dem Spiel
+      gehoert sie inhaltlich hin (beides bestimmt den Cardmarket-Pfad) und spart eine ganze Zeile. -->
+ <div style="flex:1">
+  <label><span data-i18n="locale_label">CM-UI Locale:</span> <span id="localeAutoNote" style="color:var(--ok)" data-i18n="locale_auto">auto</span></label>
+  <select id="lang">
+    <option value="de">/de/</option>
+    <option value="en">/en/</option>
+    <option value="fr">/fr/</option>
+    <option value="es">/es/</option>
+    <option value="it">/it/</option>
+  </select>
+ </div>
 </div>
 
-<div style="margin-top:8px">
-  <label><span data-i18n="label_card_lang_filter">Karten-Sprachen filtern</span> <span style="color:#888;font-size:10px" data-i18n="label_card_lang_filter_hint">(leer = alle Sprachen)</span></label>
-  <div id="cardLangFilter" style="background:#0f0f0f;border:1px solid #444;border-radius:3px;padding:6px;display:grid;grid-template-columns:repeat(3,1fr);gap:4px;font-size:10px">
+<!-- v2.3.0: eingeklappt per Default. 17 Sprachen in einem offenen Raster kosten rund 140px —
+     bei Chromes 600px-Deckel fuer Popups ist das der Unterschied zwischen "alles sichtbar"
+     und "scrollen". Die Zusammenfassung zeigt, ob gefiltert wird, ohne den Block zu oeffnen. -->
+<details class="langbox" style="margin-top:8px">
+  <summary><span data-i18n="label_card_lang_filter">Karten-Sprachen filtern</span> <span id="langSummary" class="langsum" data-i18n="label_card_lang_filter_hint">(leer = alle Sprachen)</span></summary>
+  <div id="cardLangFilter" style="background:var(--sunken);border:1px solid var(--line);border-radius:6px;padding:8px;display:grid;grid-template-columns:repeat(3,1fr);gap:5px;font-size:10.5px;margin-top:6px">
     <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" data-lang-id="3"> <span data-i18n="lang_de">Deutsch</span></label>
     <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" data-lang-id="1"> <span data-i18n="lang_en">Englisch</span></label>
     <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" data-lang-id="2"> <span data-i18n="lang_fr">Französisch</span></label>
@@ -102,14 +246,21 @@
     <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" data-lang-id="6"> <span data-i18n="lang_scn">S-Chinesisch</span></label>
     <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" data-lang-id="11"> <span data-i18n="lang_tcn">T-Chinesisch</span></label>
     <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" data-lang-id="9"> <span data-i18n="lang_ru">Russisch</span></label>
-    <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" data-lang-id="13"> <span data-i18n="lang_id">Indonesisch</span></label>
+    <!-- v2.2.13: IDs gegen Cardmarket verifiziert. 13 ist Polnisch (war faelschlich als
+         Indonesisch beschriftet), Indonesisch ist 16. 12/14/15/17 fehlten komplett. -->
+    <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" data-lang-id="12"> <span data-i18n="lang_nl">Holländisch</span></label>
+    <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" data-lang-id="13"> <span data-i18n="lang_pl">Polnisch</span></label>
+    <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" data-lang-id="14"> <span data-i18n="lang_cs">Tschechisch</span></label>
+    <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" data-lang-id="15"> <span data-i18n="lang_hu">Ungarisch</span></label>
+    <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" data-lang-id="16"> <span data-i18n="lang_id">Indonesisch</span></label>
+    <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" data-lang-id="17"> <span data-i18n="lang_th">Thailändisch</span></label>
   </div>
   <div style="margin-top:4px;display:flex;gap:6px;font-size:10px">
     <a href="#" id="langSelectAll" style="color:#2563eb" data-i18n="lang_select_all">Alle</a>
     <a href="#" id="langSelectNone" style="color:#888" data-i18n="lang_select_none">Keine</a>
     <a href="#" id="langSelectAsian" style="color:#a855f7" data-i18n="lang_select_asian">Nur Asiatische</a>
   </div>
-</div>
+</details>
 
 <div class="row2">
   <div>
@@ -155,8 +306,8 @@
   <div id="progText">…</div>
 </div>
 
-<div id="status"></div>
-<div id="keepOpenHint" class="hint" style="margin-top:6px;font-size:10px;color:#888" data-i18n-html="hint_keep_open">⚠ Popup offen lassen während Export — oder <b>📌 Pin</b> klicken</div>
+<div id="status" style="display:none"></div>
+<div id="keepOpenHint" class="hint" style="margin-top:6px;font-size:10px;color:#888" data-i18n-html="hint_keep_open">Popup offen lassen während Export — oder <b>Pin</b> klicken</div>
 
 </div><!-- /exportSection -->
 
@@ -197,11 +348,11 @@
   </div>
   <div class="opts">
     <input type="checkbox" id="fastMode">
-    <label for="fastMode" style="margin:0" data-i18n-html="opt_fast_mode">⚡ <b>Fast Mode</b> (Direct AJAX, kein Modal-Render, ~10× schneller, CF-friendly)</label>
+    <label for="fastMode" style="margin:0" data-i18n-html="opt_fast_mode"><b>Fast Mode</b> (Direct AJAX, kein Modal-Render, ~10× schneller, CF-friendly)</label>
   </div>
   <div class="opts">
     <input type="checkbox" id="slowMode">
-    <label for="slowMode" style="margin:0" data-i18n-html="opt_slow_mode">🐢 <b>Slow Mode</b> (Cloudflare-safe, 1 Req/2s, für >500 Karten empfohlen)</label>
+    <label for="slowMode" style="margin:0" data-i18n-html="opt_slow_mode"><b>Slow Mode</b> (Cloudflare-safe, 1 Req/2s, für >500 Karten empfohlen)</label>
   </div>
 
   <div id="updatePreview"></div>
@@ -238,7 +389,7 @@
     Optional: bearbeite CSV in Excel + lade hier hoch um Einträge zu löschen (Spalte <code>delete=Y</code>).
   </div>
 
-  <button id="btnWantsExport" data-i18n="btn_wants_export">📥 Alle Wantlists exportieren</button>
+  <button id="btnWantsExport" data-i18n="btn_wants_export">Alle Wantlists exportieren</button>
   <button id="btnAbortWants" class="secondary" style="background:#dc2626;display:none" data-i18n="btn_abort">Abbrechen</button>
 
   <div id="wantsProgress" style="display:none;margin-top:8px;padding:8px;background:#0f0f0f;border-radius:3px;font-size:11px;font-family:monospace;border:1px solid #2563eb">
@@ -271,27 +422,31 @@
   <div id="wantsLog" style="margin-top:10px;font-size:10px;max-height:200px;overflow-y:auto;background:#0f0f0f;padding:6px;border-radius:3px;font-family:monospace"></div>
 </div><!-- /wantsSection -->
 
-<div class="donation">
-  <span data-i18n="donation_text">Gefällt dir das Tool? Spende gerne:</span><br>
-  <a href="https://www.paypal.com/donate/?hosted_button_id=X8MG6CZK2PETS" target="_blank" rel="noopener" data-i18n="donation_button">
-    ♥ PayPal Donate
-  </a>
+<div class="support">
+  <!-- v2.3.0: Der Text hier wird nach einem erfolgreichen Export durch die konkrete Leistung
+       ersetzt (Kartenzahl + Warenwert). Eine allgemeine Bitte liest niemand, eine Zahl schon. -->
+  <div class="head" id="supportHead" data-i18n="support_head">Das Tool ist kostenlos und bleibt es.</div>
+  <div class="sub" id="supportSub" data-i18n="support_sub">Keine Werbung, kein Tracking, kein Konto. Entwickelt von einer Person neben dem Job. Wenn es dir Arbeit erspart, hilft beides:</div>
+  <div class="acts">
+    <a class="give" href="https://www.paypal.com/donate/?hosted_button_id=X8MG6CZK2PETS" target="_blank" rel="noopener">
+      <svg class="ico ico-sm"><use href="#i-heart"/></svg><span data-i18n="support_give">5 € spenden</span>
+    </a>
+    <a class="rate" href="https://chromewebstore.google.com/detail/fdhioinnlcopijnekmkpfkopeplpgdkj/reviews" target="_blank" rel="noopener">
+      <svg class="ico ico-sm"><use href="#i-star"/></svg><span data-i18n="support_rate">Bewerten</span>
+    </a>
+  </div>
 </div>
 
-<div style="margin-top:10px;padding:6px 8px;background:#0f0f0f;border-radius:3px;font-size:10px;display:flex;align-items:center;justify-content:space-between;gap:8px">
-  <span style="color:#888"><span data-i18n="locale_label">CM-UI Locale:</span> <span id="localeAutoNote" style="color:#6ee7b7" data-i18n="locale_auto">auto</span></span>
-  <select id="lang" style="width:auto;padding:2px 4px;font-size:10px">
-    <option value="de">/de/</option>
-    <option value="en">/en/</option>
-    <option value="fr">/fr/</option>
-    <option value="es">/es/</option>
-    <option value="it">/it/</option>
-  </select>
-</div>
 
-<div class="brand">
-  <span data-i18n="brand_made_with">made with ♥ by</span>
-  <a href="https://github.com/LUPZN" target="_blank" rel="noopener"><span class="logo">LUPZN</span></a>
+<div class="footbar">
+  <div class="links">
+    <a href="https://lupzn.de" target="_blank" rel="noopener"><svg class="ico ico-sm"><use href="#i-link"/></svg>lupzn.de</a>
+    <a href="mailto:info@lupzn.de"><svg class="ico ico-sm"><use href="#i-mail"/></svg>info@lupzn.de</a>
+  </div>
+  <div style="display:flex;align-items:center;gap:9px">
+    <span class="ver" id="verLabel">v–</span>
+    <a href="https://github.com/LUPZN" target="_blank" rel="noopener"><span class="logo">LUPZN</span></a>
+  </div>
 </div>
 
 <script src="i18n.js"></script>

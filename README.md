@@ -6,11 +6,11 @@
 
 <p align="center">
   <b>Export your complete Cardmarket stock &amp; wantlists to CSV — and bulk-update prices &amp; comments via CSV import.</b><br>
-  8 TCG games · German/English UI · Fast Mode (~10×) · bypasses the 300-entry pagination limit.
+  Every game Cardmarket sells · German/English UI · Fast Mode (~10×) · bypasses the 300-entry pagination limit.
 </p>
 
 <p align="center">
-  <sub>✅ v2.2.6 — compatible with Cardmarket's current stock-page layout (fixes the empty-ArticleID / "0 edits detected" Bulk-Update issue). Just re-export once.</sub>
+  <sub>✅ v2.3.0 — all 20 Cardmarket games and all 17 card languages, plus fixes for two bugs that could change a listing's language or condition during Bulk-Update. If you have bulk-updated non-German listings before, see the changelog.</sub>
 </p>
 
 <p align="center">
@@ -362,7 +362,7 @@ If you exceed Cardmarket's rate limits, the tool auto-pauses 10 seconds and resu
 
 **v2.1 idArticle Auto-Rebind covers most drift scenarios but not all.** When multiple of your listings for the same product share an identical `(language, condition, isReverseHolo)` tuple — e.g. two NM English copies with different comments — the tool can't disambiguate and will keep the entry as "not found". Workaround: re-export to refresh IDs.
 
-**Cascading Filter language coverage.** v2.1 cascades language IDs 1-12 (DE, EN, FR, ES, IT, S-Chinese, Japanese, Korean, Russian, Portuguese + 2 reserve slots). Cardmarket may add new language IDs in the future; if you hit this, file an issue with the language ID from your stock URL.
+**Cascading Filter coverage.** v2.3.0 cascades all 17 card languages Cardmarket currently lists (1 English, 2 French, 3 German, 4 Spanish, 5 Italian, 6 Simplified Chinese, 7 Japanese, 8 Portuguese, 9 Russian, 10 Korean, 11 Traditional Chinese, 12 Dutch, 13 Polish, 14 Czech, 15 Hungarian, 16 Indonesian, 17 Thai), then subdivides further by rarity and by the variant filters of the game you are exporting. Cardmarket may add language IDs in the future; if you hit one, file an issue with the language ID from your stock URL.
 
 **Want-Lists Bulk-Delete endpoint.** Implemented based on the most likely Cardmarket pattern. If your account uses a different flow, the dry-run will succeed but live delete returns HTTP 4xx. Capture a network-trace of a manual delete and open an issue.
 

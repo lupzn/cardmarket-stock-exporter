@@ -5,6 +5,32 @@ const maxPagesEl = document.getElementById('maxPages');
 const delayEl = document.getElementById('delay');
 const langEl = document.getElementById('lang');
 const gameEl = document.getElementById('game');
+
+// v2.3.0: Version dauerhaft, aber dezent in der Fusszeile anzeigen. Vorher stand sie nirgends
+// im Popup — bei Support-Anfragen war die erste Rueckfrage immer "welche Version hast du?".
+try {
+  const verEl = document.getElementById('verLabel');
+  if (verEl) verEl.textContent = 'v' + chrome.runtime.getManifest().version;
+} catch (e) { /* ausserhalb des Extension-Kontexts egal */ }
+
+// v2.3.0: Nach einem gelungenen Export die Bitte um Unterstuetzung mit der tatsaechlichen
+// Leistung fuellen. Eine abstrakte Bitte ("Gefaellt dir das Tool?") uebersieht man; eine
+// konkrete Zahl ("34.754 Karten, 8.839 € Warenwert, 12 Minuten") wird gelesen.
+function showSupportResult(cards, valueEur, minutes) {
+  const head = document.getElementById('supportHead');
+  const sub = document.getElementById('supportSub');
+  if (!head || !sub) return;
+  const isEn = ((window.i18n && window.i18n.currentLocale && window.i18n.currentLocale()) || 'de') === 'en';
+  const nf = new Intl.NumberFormat(isEn ? 'en-US' : 'de-DE');
+  head.textContent = tl(
+    `Gerade exportiert: ${nf.format(cards)} Karten, ${nf.format(Math.round(valueEur))} € Warenwert.`,
+    `Just exported: ${nf.format(cards)} cards worth €${nf.format(Math.round(valueEur))}.`
+  );
+  sub.textContent = tl(
+    `Das lief ${minutes} Minuten ohne dein Zutun. Das Tool ist kostenlos, werbefrei und wird von einer Person nebenbei gepflegt — beides hier hilft dabei:`,
+    `That ran for ${minutes} minutes without you. The tool is free, ad-free and maintained by one person on the side — either of these helps:`
+  );
+}
 const useSortByEl = document.getElementById('useSortBy');
 const perExpansionEl = document.getElementById('perExpansion');
 const abortBtn = document.getElementById('abort');
@@ -147,28 +173,94 @@ function getSelectedCardLangIds() {
   if (!cardLangFilterEl) return [];
   return [...cardLangFilterEl.querySelectorAll('input[type="checkbox"][data-lang-id]:checked')].map(cb => cb.getAttribute('data-lang-id'));
 }
+// v2.3.0: Der Sprachfilter ist eingeklappt. Damit man trotzdem sieht, ob gefiltert wird,
+// zeigt die Kopfzeile die aktuelle Auswahl — sonst wuerde ein vergessener Haken zu einem
+// unerklaerlich kleinen Export fuehren, ohne dass man den Grund sieht.
+function updateLangSummary() {
+  const el = document.getElementById('langSummary');
+  if (!el || !cardLangFilterEl) return;
+  const picked = [...cardLangFilterEl.querySelectorAll('input[data-lang-id]:checked')]
+    .map(cb => cb.parentElement?.querySelector('span')?.textContent?.trim() || '');
+  if (!picked.length) {
+    el.textContent = tl('alle Sprachen', 'all languages');
+    el.style.color = '';
+  } else {
+    el.textContent = picked.length <= 3
+      ? picked.join(', ')
+      : tl(`${picked.length} Sprachen`, `${picked.length} languages`);
+    el.style.color = 'var(--accent)';
+  }
+}
+if (cardLangFilterEl) {
+  cardLangFilterEl.addEventListener('change', updateLangSummary);
+  setTimeout(updateLangSummary, 0);
+}
+
 const langSelectAll = document.getElementById('langSelectAll');
 const langSelectNone = document.getElementById('langSelectNone');
 const langSelectAsian = document.getElementById('langSelectAsian');
 if (langSelectAll) langSelectAll.addEventListener('click', (e) => {
   e.preventDefault();
   cardLangFilterEl.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true);
+  updateLangSummary();
 });
 if (langSelectNone) langSelectNone.addEventListener('click', (e) => {
   e.preventDefault();
   cardLangFilterEl.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+  updateLangSummary();
 });
 if (langSelectAsian) langSelectAsian.addEventListener('click', (e) => {
   e.preventDefault();
-  // Asiatische Sprachen: 6=S-CN, 7=JP, 10=KR, 11=T-CN, 13=ID
-  const asianIds = ['6', '7', '10', '11', '13'];
+  // Asiatische Sprachen: 6=S-CN, 7=JP, 10=KR, 11=T-CN, 16=ID, 17=TH
+  // v2.2.13: 13 ist Polnisch, nicht Indonesisch — Indonesisch ist 16, Thai neu dazu.
+  const asianIds = ['6', '7', '10', '11', '16', '17'];
   cardLangFilterEl.querySelectorAll('input[type="checkbox"][data-lang-id]').forEach(cb => {
     cb.checked = asianIds.includes(cb.getAttribute('data-lang-id'));
   });
+  updateLangSummary();
 });
 
 function buildBasePath() {
   return `/${langEl.value}/${gameEl.value}/Stock/Offers/Singles`;
+}
+
+// v2.2.13: Cardmarket bietet je Spiel unterschiedliche Varianten-Filter an. Diese Liste wurde
+// gegen die Stock-Seite jedes einzelnen Spiels verifiziert (Stand 08/2026) — sie ist NICHT geraten.
+// Fuer die Kaskade zaehlt davon nur die "Druckvariante", weil sie den Bestand grob halbiert:
+// Reverse Holo bei Pokemon, Foil bei den meisten anderen. Signed/Altered/FirstEd sind zu selten,
+// um einen 300er-Scope sinnvoll zu teilen. Spiele ohne Druckvariante bekommen null (Stufe entfaellt).
+// v2.3.0: Liste statt Einzelwert. Die Kaskade arbeitet die Achsen der Reihe nach ab, solange ein
+// Scope ueber dem 300er-Cap bleibt. Reihenfolge = Trennschaerfe: zuerst die Druckvariante (halbiert
+// den Bestand grob), danach seltenere Merkmale. Jeder Eintrag existiert nachweislich als Filter auf
+// der Stock-Seite des jeweiligen Spiels — geprueft gegen cardmarket.com.
+const GAME_SPLIT_PARAMS = {
+  Pokemon:           ['isReverseHolo', 'isFirstEd', 'isSigned'],
+  Magic:             ['isFoil', 'isSigned'],
+  YuGiOh:            ['isFirstEd', 'isSigned'],
+  OnePiece:          ['isSigned', 'isAltered'],
+  Lorcana:           ['isFoil', 'isSigned'],
+  Riftbound:         ['isFoil'],
+  DragonBallSuper:   ['isFoil', 'isSigned'],
+  Digimon:           ['isSigned', 'isAltered'],
+  FleshAndBlood:     ['isSigned', 'isAltered'],
+  StarWarsUnlimited: ['isFoil', 'isSigned'],
+  FinalFantasy:      ['isFoil', 'isSigned'],
+  Vanguard:          ['isSigned', 'isAltered'],
+  WeissSchwarz:      ['isSigned', 'isAltered'],
+  BattleSpiritsSaga: ['isFoil', 'isSigned'],
+  FoW:               ['isFoil', 'isFirstEd', 'isSigned'],
+  WoW:               ['isFoil', 'isSigned'],
+  StarWarsDestiny:   ['isWithDie', 'isSigned'],
+  Dragoborne:        ['isFoil', 'isSigned'],
+  MyLittlePony:      ['isFoil', 'isSigned'],
+  Spoils:            ['isFoil', 'isSigned'],
+};
+
+function getSplitParams() {
+  // Unbekanntes Spiel (z.B. neu bei Cardmarket) → keine Varianten-Stufe, Rest laeuft weiter.
+  return Object.prototype.hasOwnProperty.call(GAME_SPLIT_PARAMS, gameEl.value)
+    ? GAME_SPLIT_PARAMS[gameEl.value]
+    : [];
 }
 
 btnRun.addEventListener('click', () => runExport(parseInt(maxPagesEl.value, 10) || 0));
@@ -255,6 +347,8 @@ if (btnExportSets) btnExportSets.addEventListener('click', () => {
 });
 
 async function runExport(maxPages, opts = {}) {
+  const exportStartedAt = Date.now();
+  let partialExport = false;
   const selectedSets = opts.selectedSets || null;
   const selectedExpansionIds = selectedSets ? selectedSets.map(s => String(s.id)) : null;
   btnRun.disabled = true;
@@ -305,7 +399,7 @@ async function runExport(maxPages, opts = {}) {
 
     const [{ result }] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      args: [{ maxPages, delay, basePath, useSortBy, perExpansion, cardLangIds, selectedExpansionIds }],
+      args: [{ maxPages, delay, basePath, useSortBy, perExpansion, cardLangIds, selectedExpansionIds, splitParams: getSplitParams() }],
       func: injectedScrapeAll,
     });
 
@@ -315,7 +409,23 @@ async function runExport(maxPages, opts = {}) {
     if (result.error) {
       log(t('log_error', [result.error]), 'err');
       if (result.debugSnippet) log(result.debugSnippet.slice(0, 500));
-      return;
+      // v2.3.0: Bei einem Fehler nach langem Lauf trotzdem speichern, was schon da ist.
+      // Bisher wurde hier abgebrochen und ein halbstuendiger Export war restlos verloren.
+      if (!(result.rows && result.rows.length)) return;
+      partialExport = true;
+      log(tl(
+        `⚠ Teil-Export wird trotzdem gespeichert: ${result.rows.length} Zeilen bis zum Fehler. NICHT als vollständigen Bestand verwenden.`,
+        `⚠ Saving a partial export anyway: ${result.rows.length} rows collected before the error. Do NOT treat this as your complete stock.`
+      ), 'err');
+    }
+    // v2.3.0: Bereiche, die trotz Absicherung fehlgeschlagen sind, benennen. Ohne diese Ausgabe
+    // waere ein unvollstaendiger Export von einem vollstaendigen nicht zu unterscheiden.
+    if (result.scopeErrors && result.scopeErrors.length) {
+      log(tl(
+        `⚠ ${result.scopeErrors.length} Bereich(e) fehlgeschlagen — der Export ist unvollständig:`,
+        `⚠ ${result.scopeErrors.length} scope(s) failed — this export is incomplete:`
+      ), 'err');
+      result.scopeErrors.slice(0, 10).forEach(se => log(`  ${se.label}: ${se.msg}`, 'err'));
     }
     log(t('log_pages_scanned', [result.pagesScanned]), 'ok');
     if (result.detectedTotalPages) log(t('log_pagination_widget', [result.detectedTotalPages]));
@@ -384,6 +494,10 @@ async function runExport(maxPages, opts = {}) {
     log(t('log_total_amounts', [totalStock]), 'ok');
     const totalValue = result.rows.reduce((s, r) => s + (parseFloat((r.price || '').replace(/\./g, '').replace(',', '.')) || 0) * (parseInt(r.amountDisplay || r.amount, 10) || 0), 0);
     log(t('log_total_value', [totalValue.toFixed(2).replace('.', ',')]), 'ok');
+    // v2.3.0: Unterstuetzungs-Hinweis mit der konkreten Leistung dieses Laufs fuellen.
+    if (totalStock > 0) {
+      showSupportResult(totalStock, totalValue, Math.max(1, Math.round((Date.now() - exportStartedAt) / 60000)));
+    }
 
     if (result.rows.length === 0) {
       log(t('log_no_rows'), 'err');
@@ -413,7 +527,7 @@ async function runExport(maxPages, opts = {}) {
           setMarker = `-${selectedSets.length}sets`;
         }
       }
-      const fname = `cardmarket-stock-${new Date().toISOString().slice(0, 10)}-${meta.lang}-${meta.game}-v${meta.toolVersion}${setMarker}.csv`;
+      const fname = `cardmarket-stock-${new Date().toISOString().slice(0, 10)}-${meta.lang}-${meta.game}-v${meta.toolVersion}${setMarker}${partialExport ? '-TEILEXPORT' : ''}.csv`;
       try {
         await chrome.downloads.download({ url: reader.result, filename: fname, saveAs: true });
         log(t('log_download', [fname]), 'ok');
@@ -440,7 +554,9 @@ function buildCsv(rows, meta = {}) {
   // v2.1 Skip-Fetch: _OriginalPrice_EUR + _OriginalComments als Read-Only Referenz für Edit-Detection
   // Bei Re-Import wird verglichen: wenn Price_EUR === _OriginalPrice_EUR → user hat nicht editiert → skip Cardmarket-Fetch
   // Massive Reduktion der Cloudflare-Last: 1500 rows mit 50 edits → 50 fetches statt 1500
-  const cols = ['ArticleID', 'idProduct', 'Name', 'ExpansionCode', 'SetCode', 'CollectorNumber', 'Expansion', 'Rarity', 'Language', 'Condition', 'ConditionFull', 'ReverseHolo', 'Foil', 'FirstEd', 'Signed', 'Altered', 'Playset', 'Comments', '_OriginalComments', 'Price_EUR', '_OriginalPrice_EUR', 'Amount', 'Total_EUR', 'ProductUrl', 'ImageUrl', 'delete'];
+  // v2.3.0: FullArt/UberRare/WithDie ergaenzt (Force of Will bzw. Star Wars: Destiny).
+  // Bulk-Update liest die CSV nach Spaltennamen, bestehende Tabellen funktionieren also weiter.
+  const cols = ['ArticleID', 'idProduct', 'Name', 'ExpansionCode', 'SetCode', 'CollectorNumber', 'Expansion', 'Rarity', 'Language', 'Condition', 'ConditionFull', 'ReverseHolo', 'Foil', 'FirstEd', 'Signed', 'Altered', 'Playset', 'FullArt', 'UberRare', 'WithDie', 'Comments', '_OriginalComments', 'Price_EUR', '_OriginalPrice_EUR', 'Amount', 'Total_EUR', 'ProductUrl', 'ImageUrl', 'delete'];
   const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   // Excel-formula wrapper to keep long IDs as text (otherwise Excel converts to scientific notation)
   const escId = id => `"=""${String(id ?? '').replace(/"/g, '""')}"""`;
@@ -489,6 +605,7 @@ function buildCsv(rows, meta = {}) {
       esc(r.name), esc(r.expansionCode), esc(setCode), esc(collectorNumber), esc(r.expansion), esc(r.rarity), esc(r.language), esc(r.condition), esc(r.conditionFull),
       esc(yn(r.reverse)), esc(yn(r.foil)),
       esc(yn(r.firstEd)), esc(yn(r.signed)), esc(yn(r.altered)), esc(yn(r.playset)),
+      esc(yn(r.fullArt)), esc(yn(r.uberRare)), esc(yn(r.withDie)),
       // v2.1 Skip-Fetch: Comments + _OriginalComments (gleicher Wert beim Export, divergiert wenn user editiert)
       esc(r.comments), esc(r.comments),
       // Price_EUR + _OriginalPrice_EUR
@@ -506,7 +623,7 @@ function buildCsv(rows, meta = {}) {
 // parseRow is duplicated inside each to avoid cross-context issues.
 // ================================================================
 
-async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpansion, cardLangIds, mode, selectedExpansionIds }) {
+async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpansion, cardLangIds, mode, selectedExpansionIds, splitParams }) {
   function parseRow(el) {
     const row = {};
     // v2.2.6: Cardmarket entfernte id="articleRow123" (Row heisst jetzt stockRow<id>,
@@ -629,12 +746,31 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
       if (mm) condFull = cMap[mm[1].toLowerCase()] || '';
     }
     row.conditionFull = condFull;
-    const LANG_RE = /^(Deutsch|Englisch|Französisch|Italienisch|Spanisch|Portugiesisch|Japanisch|Koreanisch|Chinesisch|Russisch|S-Chinesisch|T-Chinesisch|English|German|French|Italian|Spanish|Portuguese|Japanese|Korean|Chinese|Russian)$/;
+    // v2.2.13: alle 17 Kartensprachen, die Cardmarket fuehrt (DE- und EN-Schreibweise).
+    // Vorher endete die Liste bei 11 — Karten in Sprache 12-17 bekamen eine LEERE Language-Spalte,
+    // und das Bulk-Update hat sie danach auf Deutsch gesetzt.
+    const LANG_RE = /^(Deutsch|Englisch|Französisch|Italienisch|Spanisch|Portugiesisch|Japanisch|Koreanisch|Chinesisch|Russisch|S-Chinesisch|T-Chinesisch|Holländisch|Niederländisch|Polnisch|Tschechisch|Ungarisch|Indonesisch|Thailändisch|English|German|French|Italian|Spanish|Portuguese|Japanese|Korean|Chinese|Russian|Simplified Chinese|Traditional Chinese|Dutch|Polish|Czech|Hungarian|Indonesian|Thai)$/;
+    // v2.2.13: Zusaetzlich zur Namensliste die Sprachen akzeptieren, die das idLanguage-Dropdown
+    // DIESER Seite selbst auffuehrt. Damit funktioniert die Erkennung auch auf /fr/, /es/ und /it/,
+    // wo die Tooltips weder deutsch noch englisch heissen und die Language-Spalte bisher leer blieb.
+    // Einmal pro Tab-Kontext aufbauen, nicht pro Zeile — parseRow laeuft bis zu 20.000 mal.
+    if (!window.__cmPageLangNames) {
+      const set = new Set();
+      try {
+        document.querySelectorAll('select[name="idLanguage"] option').forEach(o => {
+          const n = (o.textContent || '').trim();
+          if (n && (o.value || '') !== '0') set.add(n);
+        });
+      } catch (e) { /* kein Dropdown → nur LANG_RE greift */ }
+      window.__cmPageLangNames = set;
+    }
+    const pageLangNames = window.__cmPageLangNames;
     let language = '';
     el.querySelectorAll('span[aria-label], span[data-bs-original-title], span[data-original-title], span[title]').forEach(s => {
       if (language) return;
-      const l = s.getAttribute('aria-label') || s.getAttribute('data-bs-original-title') || s.getAttribute('data-original-title') || s.getAttribute('title') || '';
-      if (LANG_RE.test(l)) language = l;
+      const l = (s.getAttribute('aria-label') || s.getAttribute('data-bs-original-title') || s.getAttribute('data-original-title') || s.getAttribute('title') || '').trim();
+      if (!l) return;
+      if (LANG_RE.test(l) || (pageLangNames && pageLangNames.has(l))) language = l;
     });
     row.language = language;
     const cEl = el.querySelector('.product-comments [data-bs-original-title], .product-comments [title], .product-comments .text-truncate, .product-comments span.fst-italic');
@@ -665,18 +801,31 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
     row.amountDisplay = displayCount;
     row.amount = maxAttr || displayCount || '';
     // Reverse Holo detection — comments OR icon aria-label
-    const txtAll = (row.comments || '') + ' ' + (el.textContent || '');
-    row.reverse = /Reverse\s*Holo/i.test(txtAll) || !!el.querySelector('[aria-label*="Reverse" i], [data-bs-original-title*="Reverse" i], [title*="Reverse" i]');
+    // v2.3.0: Treffer im Verkaeufer-Kommentar ignorieren. Der Kommentar-Tooltip gehoert zur selben
+    // Zeile, ist aber freier Text — ein "Full Art" oder "Signed" darin hat frueher die
+    // entsprechende Variante gesetzt, auch bei Spielen, die das Attribut gar nicht kennen.
+    const hasIcon = (...pats) => [...el.querySelectorAll(pats.flatMap(p =>
+      [`[aria-label*="${p}" i]`, `[title*="${p}" i]`, `[data-bs-original-title*="${p}" i]`]).join(','))]
+      .some(n => !n.closest('.product-comments'));
+    // v2.3.0: Reverse Holo NICHT mehr aus dem Freitext ableiten. Diese Spalte ist die einzige,
+    // die per Bulk-Update wieder nach Cardmarket geschrieben wird — ein Verkaeufer-Kommentar wie
+    // "kein Reverse Holo" hat sie faelschlich auf Y gesetzt und die Karte beim naechsten Update
+    // zur Reverse-Holo-Variante gemacht. Jetzt zaehlt nur das Icon, wie bei allen anderen Flags.
+    row.reverse = hasIcon('Reverse Holo', 'Reverse-Holo', 'Reverse');
     // v2.2.9 (issue #2): variant flags from the row's variant icons, mirroring
     // reverse-holo detection. CM tooltip labels (EN UI): "First Edition", "Signed",
     // "Altered", "Playset"; German UI uses translated titles → match both.
-    const hasIcon = (...pats) => !!el.querySelector(pats.flatMap(p =>
-      [`[aria-label*="${p}" i]`, `[title*="${p}" i]`, `[data-bs-original-title*="${p}" i]`]).join(','));
     row.firstEd = hasIcon('First Edition', '1st Edition', '1. Auflage', 'Erstauflage', 'Erstausgabe');
     row.signed  = hasIcon('Signed', 'Signiert');
     row.altered = hasIcon('Altered', 'Verändert', 'Bemalt');
     row.playset = hasIcon('Playset');
     row.foil    = hasIcon('Foil');   // v2.2.10: Magic/Foil column (requested by e-mail)
+    // v2.3.0: spielspezifische Varianten, die es nur bei wenigen Spielen gibt — Full Art und
+    // Uber Rare bei Force of Will, "mit Wuerfel" bei Star Wars: Destiny. Bei allen anderen
+    // Spielen bleiben die Spalten schlicht auf N.
+    row.fullArt  = hasIcon('Full Art', 'Full-Art', 'Fullart');
+    row.uberRare = hasIcon('Uber Rare', 'Über Rare', 'Uber-Rare');
+    row.withDie  = hasIcon('with Die', 'with die', 'mit Würfel', 'Die Included');
     return row;
   }
 
@@ -692,6 +841,10 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
   // particular sort order yields fewer than N unique ArticleIDs across pages.
   // When that happens, retry the same scope with price_desc and merge by ArticleID.
   const recoveryStats = { attempts: 0, recovered: 0, unresolved: [] };
+  // v2.3.0: Fehlgeschlagene Bereiche sammeln. Seit die Aufrufe in try/catch stehen, reisst ein
+  // Fehler den Lauf nicht mehr ab — dafuer waere er ohne diese Liste voellig unsichtbar, und ein
+  // unvollstaendiger Export saehe aus wie ein vollstaendiger.
+  const scopeErrors = [];
   let pagesScanned = 0;
   let debugSnippet = '';
   let detectedTotalPages = null;
@@ -706,6 +859,22 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
   // "23 Resultados", "23 Ergebnisse", "23 Résultats", "23 Risultati".
   // IMPORTANT: this is the number of LISTINGS/RESULTS, not the sum of Amount.
   const extractExpectedListingCount = (doc) => {
+    // v2.2.13: Cardmarket rendert die Trefferzahl der Stock-Ansicht in <span class="total-count">.
+    // Das ist in JEDER Oberflaechensprache identisch — verifiziert fuer de/en/fr/es/it.
+    // Der Wort-Regex unten greift auf der deutschen UI nicht (dort steht "Treffer", nicht
+    // "Ergebnisse"), weshalb der Zaehler-Check aus v2.2.11 fuer deutsche Nutzer wirkungslos war.
+    // v2.2.13: auch 0 akzeptieren. Mit einem n>0-Guard landete jeder leere Scope im
+    // Wort-Fallback unten, dessen Capture ueber Whitespace hinweg greift und dort Zahlen
+    // aus anderen Seitenbereichen zu einer erfundenen Trefferzahl zusammenzieht.
+    // Achtung: querySelector nimmt bei einer Selektorliste das im DOM zuerst stehende Element,
+    // nicht die zuerst genannte Alternative. Ein fremdes .total-count (Warenkorb, Benachrichtigung)
+    // wuerde also gewinnen. Deshalb nur Elemente akzeptieren, deren Text NUR aus einer Zahl besteht.
+    for (const el of doc.querySelectorAll('.total-count')) {
+      const raw = (el.textContent || '').replace(/ /g, ' ').trim();
+      if (!/^[\d.,\s]+$/.test(raw)) continue;
+      const n = parseLooseCount(raw);
+      if (Number.isFinite(n)) return n;
+    }
     const texts = [];
     const selectors = [
       '.pagination',
@@ -723,9 +892,14 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
     const bodyText = (doc.body?.innerText || doc.body?.textContent || '').replace(/\u00a0/g, ' ');
     if (bodyText) texts.push(bodyText);
 
-    const resultWord = '(?:Results?|Resultados?|Ergebnisse?|Résultats?|Resultats?|Risultati)';
-    const beforeWord = new RegExp(`(?:^|\\s)(\\d[\\d\\s.,]*)\\s*${resultWord}\\b`, 'i');
-    const afterWord = new RegExp(`\\b${resultWord}\\s*[:\\-]?\\s*(\\d[\\d\\s.,]*)`, 'i');
+    const resultWord = '(?:Results?|Resultados?|Ergebnisse?|Treffer|Résultats?|Resultats?|Risultati)';
+    // v2.2.13: Vorher verschluckte "(\d[\d\s.,]*)" beliebigen Whitespace und zog dadurch Zahlen
+    // aus anderen Seitenteilen in die Trefferzahl ("40\n1 500" wurde zu 401500). Jetzt sind nur
+    // noch echte Tausendergruppen erlaubt: nach einem Trenner muessen exakt drei Ziffern folgen.
+    // Das faengt "1.234", "1,234" und das franzoesische "1 234", ohne Tokens zu ueberspringen.
+    const num = '(\\d{1,3}(?:[.,\\s]\\d{3})*|\\d+)';
+    const beforeWord = new RegExp(`(?:^|\\s)${num}\\s*${resultWord}\\b`, 'i');
+    const afterWord = new RegExp(`\\b${resultWord}\\s*[:\\-]?\\s*${num}`, 'i');
 
     for (const txt of texts) {
       let m = txt.match(beforeWord);
@@ -746,9 +920,16 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
     else if (useSortBy) params.set('sortBy', 'name_asc');
     if (filter.idExpansion) params.set('idExpansion', filter.idExpansion);
     if (filter.idLanguage) params.set('idLanguage', filter.idLanguage);
-    if (filter.idCondition) params.set('idCondition', filter.idCondition);
-    if (filter.isReverseHolo != null) params.set('isReverseHolo', filter.isReverseHolo ? '1' : '0');
-    if (filter.isFoil != null) params.set('isFoil', filter.isFoil ? '1' : '0');
+    // v2.2.13: idRarity ersetzt idCondition als dritte Teilungsachse. Cardmarket IGNORIERT
+    // idCondition auf der Stock-Seite (verifiziert: idCondition=1 und =7 liefern dieselbe
+    // Trefferzahl wie ungefiltert), idRarity filtert dagegen echt.
+    if (filter.idRarity) params.set('idRarity', filter.idRarity);
+    // v2.2.13: Varianten-Filter heissen je Spiel anders (isReverseHolo bei Pokemon, isFoil bei
+    // Magic, isFirstEd bei Yu-Gi-Oh, isWithDie bei SW Destiny, isFullArt/isUberRare bei FoW).
+    // Deshalb generisch: alles was im Filter mit "is" beginnt, wird als 0/1 gesendet.
+    Object.keys(filter).forEach(k => {
+      if (/^is[A-Z]/.test(k) && filter[k] != null) params.set(k, filter[k] ? '1' : '0');
+    });
     params.set('site', String(p));
     return `${basePath}?${params.toString()}`;
   };
@@ -766,9 +947,13 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
 
   const writeProgress = (extras) => {
     const stockTotal = rows.reduce((s, r) => s + (parseInt(r.amountDisplay || r.amount, 10) || 0), 0);
+    // v2.3.0: Reihenfolge korrigiert. Vorher standen die frischen Zaehler GANZ LINKS und wurden
+    // vom alten Zustand ueberschrieben — rowsTotal und stockTotal blieben also fuer immer auf den
+    // Werten des allerersten Aufrufs (0/0) stehen, und ein einmal gesetztes lastErr klebte bis
+    // zum Ende. Der Fortschrittsbalken im Popup war damit praktisch tot.
     window.__cmExportProgress = Object.assign(
-      { rowsTotal: rows.length, stockTotal, ts: Date.now() },
       window.__cmExportProgress || {},
+      { rowsTotal: rows.length, stockTotal, ts: Date.now() },
       extras,
     );
   };
@@ -784,6 +969,7 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
     let lastPageRowCount = 0;
     let expectedListings = null;
     let anonymousObserved = 0;
+    const passAnonSeen = new Set();
     let passDuplicateCount = 0;
     const passSeen = new Set();
     const sortLabel = sortOverride || (useSortBy ? 'name_asc' : 'default');
@@ -796,6 +982,10 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
         expansion: expIdx ? { idx: expIdx, total: expTotal, name: expName, id: filter.idExpansion } : null,
         page,
         label: `${label} [sort=${sortLabel}]`,
+        // v2.3.0: alte Fehlermeldung loeschen. Sie steckt seit der Merge-Umstellung in der Basis
+        // und wuerde sonst bis zum Ende kleben — ein gesunder Lauf saehe nach einer einmaligen
+        // 429-Pause dauerhaft kaputt aus.
+        lastErr: null,
       });
 
       const { res, url } = await fetchPage(page, filter, sortOverride);
@@ -852,7 +1042,10 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
         // (no rows, not cap-suspect, no error thrown; e.g. Reisegefährten, 913 cards).
         // Deep cascade sub-scopes (a language/condition the seller doesn't stock) are
         // legitimately empty and must break fast, without the 3s retry penalty.
-        const broadScope = !filter.idLanguage && !filter.idCondition && filter.isReverseHolo == null;
+        // v2.2.13: generisch statt auf feste Filternamen geprueft — ein Scope ist "breit",
+        // wenn weder Sprache noch Rarity noch irgendein spielspezifischer Varianten-Filter gesetzt ist.
+        const broadScope = !filter.idLanguage && !filter.idRarity
+          && !Object.keys(filter).some(k => /^is[A-Z]/.test(k) && filter[k] != null);
         if (page === 1 && broadScope) {
           if (window.__cmExportStop) { writeProgress({ status: 'aborted', lastErr: 'Abgebrochen' }); throw new Error('Abgebrochen'); }
           await sleep(3000);
@@ -899,15 +1092,27 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
           if (row.name || row.price) {
             // v2.2.12: dedup anonymous rows globally so a re-scan can't duplicate them
             const anonKey = (row.name || '') + '|' + (row.expansionCode || '') + '|' + (row.price || '') + '|' + (row.condition || '') + '|' + (row.comments || '');
+            // v2.3.0: Beobachtung pass-LOKAL zaehlen, Speicherung global entscheiden.
+            // Vorher wurde anonymousObserved nur beim global ersten Auftreten hochgezaehlt.
+            // In einem zweiten Durchgang (price_desc-Recovery, Nachlauf) fehlten diese Zeilen
+            // dann in passObserved, das blieb dauerhaft unter der Trefferzahl der Seite — und
+            // capSuspect klebte auf true, was immer neue, nutzlose Unterteilungen ausloeste.
+            if (!passAnonSeen.has(anonKey)) {
+              passAnonSeen.add(anonKey);
+              anonymousObserved++;
+              passAddedThisPage++;
+            } else {
+              // Kein passDuplicateCount: anonyme Zeilen werden ueber einen synthetischen
+              // Schluessel verglichen, zwei echte Listings mit identischen Werten kollidieren
+              // dort zwangslaeufig. Als Overlap-Signal taugt das nicht — es wuerde unnoetige
+              // price_desc-Durchlaeufe ausloesen.
+              passDupedThisPage++;
+            }
             if (!anonSeen.has(anonKey)) {
               anonSeen.add(anonKey);
               rows.push(row);
               added++;
               localAdded++;
-              anonymousObserved++;
-              passAddedThisPage++;
-            } else {
-              passDupedThisPage++;
             }
           }
           return;
@@ -987,7 +1192,11 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
     // count would otherwise create a false "missing" signal.
     if (maxPages) return primary;
 
-    const expected = primary.expectedListings;
+    // v2.2.13: Meldet die Seite 0 Treffer, hat aber Zeilen geliefert, widerspricht sie sich selbst
+    // (falsches .total-count-Element, Teil-Render, Challenge-Seite). Diese 0 zu glauben wuerde die
+    // Pruefung fuer den Scope stilllegen — inklusive des Dubletten-Signals, das nur bei
+    // expected == null greift. Also lieber als "unbekannt" behandeln.
+    const expected = (primary.expectedListings === 0 && primary.passObserved > 0) ? null : primary.expectedListings;
     const missing = (expected != null) ? Math.max(0, expected - primary.passObserved) : 0;
     // If Cardmarket's result counter cannot be parsed, a repeated ArticleID
     // inside the same paginated pass is still a strong overlap signal.
@@ -1061,13 +1270,115 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
 
   // Existing cascading driver, now routed through scrapeScope so every
   // expansion/language/condition scope gets the result-count recovery check.
-  const LANG_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-  const COND_IDS = [1, 2, 3, 4, 5, 6, 7];
+  // v2.2.13: Cardmarket fuehrt 17 Kartensprachen (bis 17=Thailaendisch). Bis v2.2.12 endete
+  // die Kaskade bei 12, wodurch Bestand in Polnisch/Tschechisch/Ungarisch/Indonesisch/Thai
+  // nie als eigener Scope geprueft wurde.
+  const LANG_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
+
+  // v2.2.13: Rarity-IDs sind spiel- UND spielabhaengig, deshalb zur Laufzeit aus dem
+  // idRarity-Dropdown der Stock-Seite lesen (einmal pro Lauf, danach gecacht).
+  let cachedRarityIds = null;
+  let rarityFailures = 0;
+  const getRarityIds = async () => {
+    // v2.2.13: NUR Erfolge cachen. Wuerde ein Fehlschlag gecacht, haette ein einzelner
+    // 429 oder Netzwerkfehler die Rarity-Stufe fuer den gesamten Restlauf abgeschaltet
+    // (leeres Array ist truthy). Ein leeres Dropdown ist dagegen ein legitimes Ergebnis
+    // und wird gecacht — es heisst schlicht "dieses Spiel hat keinen Rarity-Filter".
+    if (cachedRarityIds) return cachedRarityIds;
+    // v2.3.0: Fehlerbudget ueber den ganzen Lauf. Ohne das zahlt bei anhaltender Blockade
+    // (Cloudflare/429) JEDER gecappte Scope erneut zwei Fehlversuche samt Pausen — bei einem
+    // grossen Bestand summiert sich das auf Minuten reiner Wartezeit ohne jeden Ertrag.
+    if (rarityFailures >= 3) return [];
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (window.__cmExportStop) return [];
+      const isLastAttempt = attempt === 1;
+      try {
+        const { res } = await fetchPage(1, {});
+        if (res.status === 429) {
+          writeProgress({ lastErr: 'Rarity-Liste: 429, Pause 10s' });
+          if (!isLastAttempt) await sleep(10000);
+          continue;
+        }
+        if (!res.ok) { if (!isLastAttempt) await sleep(2000); continue; }
+        const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+        // v2.2.13: Ein Cloudflare-Interstitial, ein Login-Redirect oder eine Wartungsseite kommen
+        // mit HTTP 200 und ohne Dropdown daher. Ohne diese Pruefung wuerde so eine Seite als
+        // "Spiel ohne Rarity-Filter" dauerhaft gecacht — genau der Fehlschlag-Cache, den wir
+        // gerade beseitigt haben, nur durch die Hintertuer.
+        if (!doc.querySelector('select[name="idExpansion"], select[name^="idExpansion"]')) {
+          if (!isLastAttempt) await sleep(2000);
+          continue;
+        }
+        const sel = doc.querySelector('select[name="idRarity"], select[name^="idRarity"], select#idRarity');
+        if (!sel) { cachedRarityIds = []; return cachedRarityIds; }
+        const list = [];
+        sel.querySelectorAll('option').forEach(o => {
+          const v = o.value;
+          if (v && /^\d+$/.test(v) && v !== '0') list.push(v);
+        });
+        cachedRarityIds = list;
+        return cachedRarityIds;
+      } catch (e) { if (!isLastAttempt) await sleep(2000); }
+    }
+    rarityFailures++;
+    // v2.3.0: sichtbar machen. Fiel die Stufe aus, teilte die Kaskade nur noch ueber Varianten —
+    // ohne jeden Hinweis im Popup. Ein unvollstaendiger Export sah aus wie ein vollstaendiger.
+    writeProgress({ lastErr: 'Rarity-Liste nicht ladbar — Kaskade teilt nur ueber Varianten' });
+    // Nicht cachen — der naechste Scope darf es erneut versuchen.
+    console.warn('[CM] Rarity-Liste konnte nicht geladen werden; Kaskade nutzt den Varianten-Fallback.');
+    return [];
+  };
+
+  // v2.3.0: Teilt einen Scope ueber die Varianten-Achsen DIESES Spiels, eine nach der anderen.
+  // Vorher gab es nur eine einzige Achse (die Druckvariante). Spiele ohne Druckvariante —
+  // Yu-Gi-Oh, One Piece, Digimon, Flesh and Blood, Vanguard, Weiss Schwarz — hatten damit gar
+  // keine Notachse und blieben bei einem gecappten Scope ungeteilt. Ausserdem wurde frueher
+  // nach dem Split nicht mehr geprueft, ob die Haelfte SELBST noch gecappt ist; ein Filter
+  // halbiert bestenfalls, deshalb geht es jetzt rekursiv weiter, bis die Achsen aufgebraucht sind.
+  const cascadeVariants = async (scopeFilter, scopeLabel, expIdx, expTotal, expName) => {
+    const axes = Array.isArray(splitParams) ? splitParams : [];
+    const axis = axes.find(p => scopeFilter[p] == null);
+    if (!axis || window.__cmExportStop) return 0;
+    let added = 0;
+    for (const flag of [false, true]) {
+      if (window.__cmExportStop) break;
+      const f = { ...scopeFilter, [axis]: flag };
+      const lbl = `${scopeLabel} [${axis}=${flag ? 1 : 0}]`;
+      const r = await scrapeScope(f, lbl, expIdx, expTotal, expName);
+      added += r.added;
+      if (r.capSuspect) added += await cascadeVariants(f, lbl, expIdx, expTotal, expName);
+      if (delay) await sleep(delay);
+    }
+    return added;
+  };
+
+  // Rarity-Stufe plus Varianten-Stufe fuer einen bereits eingegrenzten Scope.
+  const cascadeRarityAndVariants = async (scopeFilter, scopeLabel, expIdx, expTotal, expName) => {
+    let added = 0;
+    if (!scopeFilter.idRarity) {
+      const rarityIds = await getRarityIds();
+      console.warn(`[CM] ${scopeLabel} cap/gap-suspect — cascading by rarity (${rarityIds.length})...`);
+      for (const rarId of rarityIds) {
+        if (window.__cmExportStop) break;
+        const f2 = { ...scopeFilter, idRarity: rarId };
+        const lbl2 = `${scopeLabel} [rarity=${rarId}]`;
+        const r3 = await scrapeScope(f2, lbl2, expIdx, expTotal, expName);
+        added += r3.added;
+        if (r3.capSuspect) added += await cascadeVariants(f2, lbl2, expIdx, expTotal, expName);
+        if (delay) await sleep(delay);
+      }
+    }
+    // Varianten zusaetzlich direkt auf dem Scope, als Geschwister der Rarity-Stufe.
+    // Notwendig, weil Rarity KEINE garantierte Partition ist: Listings ohne bzw. mit nicht
+    // gelisteter Seltenheit tauchen in keinem einzigen Rarity-Scope auf. Deckt zugleich den
+    // Fall ab, dass die Rarity-Liste leer ist (Spiel ohne Filter oder Abruf gescheitert).
+    added += await cascadeVariants(scopeFilter, scopeLabel, expIdx, expTotal, expName);
+    return added;
+  };
 
   const scrapeWithCascade = async (baseFilter, label, expIdx, expTotal, expName, force = false) => {
-    // v2.2.12: force=true (completeness recovery) skips the redundant broad r1 pass
-    // and goes straight to the language/condition/reverseHolo subdivision, which
-    // reliably re-fetches every listing the primary sort may have dropped.
+    // v2.2.12: force=true (Vollstaendigkeits-Nachlauf) ueberspringt den breiten r1-Durchgang
+    // und geht direkt in die Unterteilung.
     let baseAdded = 0;
     if (!force) {
       const r1 = await scrapeScope(baseFilter, label, expIdx, expTotal, expName);
@@ -1085,34 +1396,20 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
         const subLabel = `${label} [lang=${langId}]`;
         const r2 = await scrapeScope(filter, subLabel, expIdx, expTotal, expName);
         totalAdded += r2.added;
-
-        if (r2.capSuspect && !baseFilter.idCondition) {
-          console.warn(`[CM] ${subLabel} still cap/gap-suspect. Cascading by condition...`);
-          for (const condId of COND_IDS) {
-            if (window.__cmExportStop) break;
-            const filter2 = { ...filter, idCondition: condId };
-            const subLabel2 = `${subLabel} [cond=${condId}]`;
-            const r3 = await scrapeScope(filter2, subLabel2, expIdx, expTotal, expName);
-            totalAdded += r3.added;
-
-            if (r3.capSuspect && baseFilter.isReverseHolo == null) {
-              console.warn(`[CM] ${subLabel2} still cap/gap-suspect. Cascading by reverseHolo...`);
-              for (const rh of [false, true]) {
-                if (window.__cmExportStop) break;
-                const filter3 = { ...filter2, isReverseHolo: rh };
-                const r4 = await scrapeScope(filter3, `${subLabel2} [rh=${rh ? 1 : 0}]`, expIdx, expTotal, expName);
-                totalAdded += r4.added;
-                if (delay) await sleep(delay);
-              }
-            }
-            if (delay) await sleep(delay);
-          }
+        if (r2.capSuspect) {
+          totalAdded += await cascadeRarityAndVariants(filter, subLabel, expIdx, expTotal, expName);
         }
         if (delay) await sleep(delay);
       }
       return totalAdded;
     }
-    return baseAdded;
+
+    // v2.3.0: Die Sprache ist bereits gesetzt, weil der Nutzer im Popup Kartensprachen
+    // angehakt hat. Bisher endete die Kaskade hier — ein Scope aus Set plus Sprache mit ueber
+    // 300 Listings wurde also still abgeschnitten, obwohl Rarity und Varianten noch offen waren.
+    console.warn(`[CM] ${label} cap/gap-suspect bei gesetzter Sprache — teile nach Rarity/Varianten...`);
+    writeProgress({ lastErr: `${label}: cap/gap suspect, split by rarity/variant` });
+    return baseAdded + await cascadeRarityAndVariants(baseFilter, label, expIdx, expTotal, expName);
   };
 
   const extractExpansionIds = async () => {
@@ -1209,7 +1506,16 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
             console.warn('[CM] Gewählte Sets nicht im Dropdown gefunden — kein Fallback auf Voll-Export.');
           } else {
             console.warn('[CM] Keine Expansion-IDs, fallback');
-            await scrapeWithCascade(langBaseFilter, 'ALL' + langTag, 1, 1, 'ALL');
+            // v2.3.0: abgesichert — vorher riss ein Fehler hier den ganzen Export mit,
+            // inklusive aller bereits gesammelten Zeilen.
+            try {
+              await scrapeWithCascade(langBaseFilter, 'ALL' + langTag, 1, 1, 'ALL');
+            } catch (e) {
+              if (e.message !== 'Abgebrochen') {
+                scopeErrors.push({ label: 'ALL' + langTag, msg: e.message });
+                writeProgress({ lastErr: `ALL${langTag}: ${e.message}` });
+              }
+            }
           }
         } else {
           for (let i = 0; i < expansions.length; i++) {
@@ -1231,6 +1537,7 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
             } catch (e) {
               if (e.message === 'Abgebrochen') break;
               console.error(`[CM] Expansion ${id} (${name})${langTag} fehlgeschlagen:`, e);
+              scopeErrors.push({ label: `${name}${langTag}`, msg: e.message });
               writeProgress({ lastErr: `${name}${langTag}: ${e.message}` });
             }
             // v2.2.12: tally cards captured for this expansion (summed across language passes)
@@ -1241,7 +1548,16 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
           }
         }
       } else {
-        await scrapeWithCascade(langBaseFilter, 'ALL' + langTag, 1, 1, 'ALL');
+        // v2.3.0: siehe oben — ohne try/catch kostet ein einzelner HTTP-Fehler im ALL-Modus
+        // (perExpansion aus) den gesamten Lauf.
+        try {
+          await scrapeWithCascade(langBaseFilter, 'ALL' + langTag, 1, 1, 'ALL');
+        } catch (e) {
+          if (e.message !== 'Abgebrochen') {
+            scopeErrors.push({ label: 'ALL' + langTag, msg: e.message });
+            writeProgress({ lastErr: `ALL${langTag}: ${e.message}` });
+          }
+        }
       }
     }
 
@@ -1304,10 +1620,10 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
     }
 
     writeProgress({ status: 'done' });
-    return { rows, pagesScanned, debugSnippet, detectedTotalPages, recoveryStats, completeness, aborted: !!window.__cmExportStop };
+    return { rows, pagesScanned, debugSnippet, detectedTotalPages, recoveryStats, completeness, scopeErrors, aborted: !!window.__cmExportStop };
   } catch (e) {
     writeProgress({ status: 'error', lastErr: e.message });
-    return { error: e.message, rows, pagesScanned, debugSnippet, detectedTotalPages, recoveryStats, completeness: null, aborted: !!window.__cmExportStop };
+    return { error: e.message, rows, pagesScanned, debugSnippet, detectedTotalPages, recoveryStats, completeness: null, scopeErrors, aborted: !!window.__cmExportStop };
   }
 }
 
@@ -1840,8 +2156,10 @@ btnAnalyze.addEventListener('click', async () => {
               return null;
             }
             const price = priceInput.getAttribute('value') || priceInput.value || '';
-            const commentsEl = form ? form.querySelector('textarea[name="comments"], textarea[name="comment"], input[name="comments"]') : doc.querySelector('textarea[name="comments"], textarea[name="comment"]');
-            const comments = commentsEl ? (commentsEl.value || commentsEl.textContent || '') : '';
+            const commentsEl = form ? form.querySelector('textarea[name="comments"], textarea[name="comment"], input[name="comments"], input[name="comment"]') : doc.querySelector('textarea[name="comments"], textarea[name="comment"]');
+            // v2.3.0: null statt '' — ein nicht gefundenes Kommentarfeld darf nicht als
+            // "Kommentar ist leer" gelten, sonst loescht das Voll-Update ihn.
+            const comments = commentsEl ? (commentsEl.value || commentsEl.textContent || '') : null;
             // v2.2.5: capture variant flags from form so directUpdate can preserve them
             // CM stock-listing form has checkboxes: isReverseHolo, isFoil, isSigned, isAltered, isFirstEd, isPlayset
             // Some are absent from form depending on game/expansion — undefined/null means "do not pass"
@@ -1852,17 +2170,41 @@ btnAnalyze.addEventListener('click', async () => {
               const v = el.value || '';
               return v === '1' || v.toLowerCase() === 'true' || v.toLowerCase() === 'y';
             };
-            const flags = {
-              isReverseHolo: readChk('isReverseHolo'),
-              isFoil: readChk('isFoil'),
-              isSigned: readChk('isSigned'),
-              isAltered: readChk('isAltered'),
-              isFirstEd: readChk('isFirstEd'),
-              isPlayset: readChk('isPlayset'),
-            };
+            // v2.3.0: keine feste Liste mehr. Die Varianten heissen je Spiel anders — Force of Will
+            // hat isFullArt und isUberRare, Star Wars: Destiny isWithDie. Eine Whitelist haette
+            // genau diese Flags beim Update verworfen (Cardmarket entfernt nicht mitgesendete
+            // Felder). Deshalb alles einsammeln, was das Formular an is*-Feldern anbietet.
+            // WICHTIG: pro Name ALLE gleichnamigen Inputs auswerten und die Checkbox bevorzugen.
+            // Cardmarket rendert Schalter typischerweise als Paar
+            //   <input type="hidden" name="isFoil" value="0"><input type="checkbox" name="isFoil" value="1" checked>
+            // Eine Suche per Namen liefert das ERSTE Element, also das Hidden-Feld mit value=0 —
+            // jedes Flag waere als false gelesen und anschliessend als '0' zurueckgeschrieben
+            // worden. Das haette die Varianten flaechendeckend geloescht statt sie zu bewahren.
+            const flags = {};
+            const isNames = new Set();
+            (form || doc).querySelectorAll('input[name^="is"]').forEach(el => {
+              const n = el.getAttribute('name') || '';
+              if (/^is[A-Z]/.test(n)) isNames.add(n);
+            });
+            isNames.forEach(n => {
+              const els = [...(form || doc).querySelectorAll(`input[name="${n}"]`)];
+              const box = els.find(e => e.type === 'checkbox' || e.type === 'radio');
+              if (box) { flags[n] = box.checked; return; }
+              // Kein Schalter, sondern ein reines Wertfeld → nicht als Boolean behandeln,
+              // sonst wuerde ein Nicht-0/1-Wert beim Zurueckschreiben zerstoert.
+              const v = String(els[0]?.value ?? '').toLowerCase();
+              flags[n] = (v === '1' || v === 'true' || v === 'y') ? true : (v === '0' || v === 'false' || v === 'n' ? false : null);
+            });
+            // Sicherheitsnetz: die klassischen Felder auch dann fuehren, wenn der Selektor
+            // sie (z.B. als <select>) nicht erwischt hat.
+            ['isReverseHolo', 'isFoil', 'isSigned', 'isAltered', 'isFirstEd', 'isPlayset'].forEach(n => {
+              if (!(n in flags)) flags[n] = readChk(n);
+            });
             // Capture editAmount too (CM-side current amount, may differ from CSV if user partially sold)
             const amountEl = (form || doc).querySelector('input[name="editAmount"], input[name="amount"]');
-            const editAmount = amountEl ? (amountEl.value || amountEl.getAttribute('value') || '') : '';
+            // v2.3.0: null statt '' — nur so laesst sich "Feld nicht gefunden" von "Feld ist leer"
+            // unterscheiden. Mit '' war der Schutz in directUpdate unerreichbar.
+            const editAmount = amountEl ? (amountEl.value || amountEl.getAttribute('value') || '') : null;
             return { price, comments, flags, editAmount };
           } catch (e) {
             if (e?.message === 'Session expired') throw e; // Session-Errors propagieren
@@ -1895,10 +2237,34 @@ btnAnalyze.addEventListener('click', async () => {
           if (!res || !res.ok) { productCache[idProduct] = []; return []; }
           const html = await res.text();
           const doc = new DOMParser().parseFromString(html, 'text/html');
-          const LANG_RE = /^(Deutsch|Englisch|Französisch|Italienisch|Spanisch|Portugiesisch|Japanisch|Koreanisch|Chinesisch|Russisch|S-Chinesisch|T-Chinesisch|English|German|French|Italian|Spanish|Portuguese|Japanese|Korean|Chinese|Russian)$/;
-          const list = [...doc.querySelectorAll('[id^="articleRow"]')].map(el => {
-            const m = (el.id || '').match(/articleRow(\d+)/);
-            const articleId = m ? m[1] : '';
+          // v2.2.13: alle 17 Kartensprachen, die Cardmarket fuehrt (DE- und EN-Schreibweise).
+    // Vorher endete die Liste bei 11 — Karten in Sprache 12-17 bekamen eine LEERE Language-Spalte,
+    // und das Bulk-Update hat sie danach auf Deutsch gesetzt.
+    const LANG_RE = /^(Deutsch|Englisch|Französisch|Italienisch|Spanisch|Portugiesisch|Japanisch|Koreanisch|Chinesisch|Russisch|S-Chinesisch|T-Chinesisch|Holländisch|Niederländisch|Polnisch|Tschechisch|Ungarisch|Indonesisch|Thailändisch|English|German|French|Italian|Spanish|Portuguese|Japanese|Korean|Chinese|Russian|Simplified Chinese|Traditional Chinese|Dutch|Polish|Czech|Hungarian|Indonesian|Thai)$/;
+          // v2.3.0: Selektor und ID-Extraktion an das aktuelle Cardmarket-Markup angeglichen.
+          // Der alte Pfad suchte nur id="articleRow123" — seit der Umstellung auf stockRow gab es
+          // dort keine Treffer mehr, wodurch der Auto-Rebind fuer verschobene Article-IDs
+          // stillschweigend wirkungslos war. Gleiche Reihenfolge wie in parseRow.
+          let list = [...doc.querySelectorAll('[id^="articleRow"], [id^="stockRow"], .article-row')].map(el => {
+            let articleId = '';
+            const editLink = el.querySelector('a[data-modal*="idArticle="], [data-modal*="idArticle="]');
+            if (editLink) {
+              const mm = (editLink.getAttribute('data-modal') || '').match(/idArticle=(\d+)/);
+              if (mm) articleId = mm[1];
+            }
+            if (!articleId) {
+              const amtInp = el.querySelector('input[name^="groupCountAmount"]');
+              const mm = (amtInp?.getAttribute('name') || '').match(/groupCountAmount(\d+)/);
+              if (mm) articleId = mm[1];
+            }
+            if (!articleId) {
+              const mm = (el.outerHTML || '').match(/(?:idArticle['"\s:=]+|stockRow)(\d+)/);
+              if (mm) articleId = mm[1];
+            }
+            if (!articleId) {
+              const mm = (el.id || '').match(/articleRow(\d+)/);
+              if (mm) articleId = mm[1];
+            }
             const condition = el.querySelector('.article-condition .badge')?.textContent.trim() || '';
             let language = '';
             el.querySelectorAll('span[aria-label], span[data-bs-original-title], span[data-original-title], span[title]').forEach(s => {
@@ -1909,6 +2275,12 @@ btnAnalyze.addEventListener('click', async () => {
             const reverseHolo = !!el.querySelector('[aria-label*="Reverse" i], [data-bs-original-title*="Reverse" i], [title*="Reverse" i]') || /Reverse\s*Holo/i.test(el.textContent || '');
             return { articleId, condition, language, reverseHolo };
           }).filter(c => c.articleId);
+          // v2.3.0: nach articleId deduplizieren. Der erweiterte Selektor kann bei
+          // verschachteltem Markup dasselbe Listing zweimal liefern, und der Rebind verlangt
+          // genau einen Treffer — sonst faellt er wieder auf null zurueck.
+          const byId = new Map();
+          for (const c of list) if (c.articleId && !byId.has(c.articleId)) byId.set(c.articleId, c);
+          list = [...byId.values()];
           productCache[idProduct] = list;
           return list;
         } catch { productCache[idProduct] = []; return []; }
@@ -1951,7 +2323,7 @@ btnAnalyze.addEventListener('click', async () => {
         for (const r of results) {
           // v2.2.5: pipe variant flags + editAmount through so directUpdate can preserve them
           out[r.articleId] = r.state
-            ? { price: r.state.price, comments: r.state.comments, flags: r.state.flags || null, editAmount: r.state.editAmount || '' }
+            ? { price: r.state.price, comments: r.state.comments ?? null, flags: r.state.flags || null, editAmount: r.state.editAmount ?? null }
             : { price: null, comments: null, flags: null, editAmount: '' };
           if (!r.state) consecutiveFails++;
           else consecutiveFails = 0;
@@ -2055,12 +2427,12 @@ btnAnalyze.addEventListener('click', async () => {
       rebindCount++;
     }
     u.oldPrice = parseFormPrice(oldStr);
-    u.oldComments = r.comments || '';
+    u.oldComments = r.comments ?? null;
     // v2.2.5: pipe variant flags + editAmount from fetched state to update-object
     // Used by directUpdate to preserve isFoil/isSigned/isAltered/isFirstEd/isPlayset on bulk-update.
     // isReverseHolo: CSV value takes priority (user might have toggled in CSV); fallback to fetch.
     u._fetchedFlags = r.flags || null;
-    u._fetchedAmount = r.editAmount || '';
+    u._fetchedAmount = r.editAmount ?? null;
 
     // v2.1: Delete-Flag — wenn delete=Y, alles andere ignorieren, status=delete
     if (u.wantsDelete) {
@@ -2393,6 +2765,20 @@ btnUpdate.addEventListener('click', async () => {
 
     updateProgFillEl.style.width = '100%';
     ulog(tl(`${isDry ? 'DRY-RUN' : 'UPDATE'} fertig: ${result.ok || 0} OK, ${result.err || 0} Fehler`, `${isDry ? 'DRY-RUN' : 'UPDATE'} done: ${result.ok || 0} OK, ${result.err || 0} errors`), 'ok');
+    // v2.3.0: Fast-Mode-Rueckfaelle ausweisen. Diese Zeilen wurden korrekt aktualisiert, aber
+    // ueber den langsamen Modal-Flow — und der Grund ist oft ein Hinweis auf die CSV
+    // (z.B. leere Sprach- oder Zustandsspalte aus einem alten Export).
+    const fallbacks = result.directFallbacks || [];
+    if (fallbacks.length) {
+      ulog(tl(
+        `ℹ ${fallbacks.length} Zeile(n) liefen nicht über Fast Mode, sondern über den sicheren Modal-Flow:`,
+        `ℹ ${fallbacks.length} row(s) did not use Fast Mode and went through the safe modal flow instead:`
+      ));
+      const reasons = {};
+      fallbacks.forEach(f => { reasons[f.msg] = (reasons[f.msg] || 0) + 1; });
+      Object.entries(reasons).sort((a, b) => b[1] - a[1]).slice(0, 6)
+        .forEach(([msg, n]) => ulog(`   • ${n}× ${msg}`));
+    }
     if (result.errors?.length) {
       ulog(tl('Fehler-Details:', 'Error details:'), 'err');
       result.errors.slice(0, 20).forEach(e => ulog(`  ${e.articleId}: ${e.msg}`, 'err'));
@@ -2418,6 +2804,8 @@ async function runBulkUpdate(args) {
   if (!Array.isArray(updates)) return { ok: 0, err: 0, errors: [{ articleId: '?', msg: 'no updates passed' }], aborted: false };
   let ok = 0, err = 0;
   const errors = [];
+  // v2.3.0: Zeilen, bei denen Fast Mode auf den Modal-Flow zurueckgefallen ist (inkl. Grund).
+  const directFallbacks = [];
   const total = updates.length;
   const pathParts = location.pathname.split('/').filter(Boolean);
   const lang = pathParts[0] || 'de';
@@ -2446,18 +2834,45 @@ async function runBulkUpdate(args) {
   // Endpoint: POST /{lang}/{game}/AjaxAction/Article_EditSingleArticle
   // Felder: __cmtkn, idArticle, condition (string!), idLanguage (numeric), comments, price (dot), editAmount
   // Vorteil: keine Modal-Fetch, keine Modal-Render, 1 POST pro article = max speed + min CF-load
+  // v2.2.13: Die Stock-Seite fuehrt selbst ein idLanguage-Dropdown, das Name und ID in der
+  // AKTUELLEN Oberflaechensprache liefert. Das daraus gebaute Verzeichnis ist der Wahrheitswert:
+  // es deckt automatisch alle Locales (auch fr/es/it) und kuenftige Sprachen ab, waehrend die
+  // handgepflegte Tabelle unten nur DE/EN kennt und damit auf /fr/, /es/ und /it/ nichts findet.
+  // Kostet keinen zusaetzlichen Abruf — die Seite liegt bereits im DOM.
+  const pageLangNameToId = (() => {
+    const map = {};
+    try {
+      document.querySelectorAll('select[name="idLanguage"] option').forEach(o => {
+        const v = (o.value || '').trim();
+        const n = (o.textContent || '').trim();
+        if (v && /^\d+$/.test(v) && v !== '0' && n) map[n] = v;
+      });
+    } catch (e) { /* kein Dropdown auf dieser Seite → Tabelle unten uebernimmt */ }
+    return map;
+  })();
+
   const STOCK_LANG_NAME_TO_ID = {
     'Englisch': '1', 'English': '1',
     'Französisch': '2', 'French': '2',
     'Deutsch': '3', 'German': '3',
     'Spanisch': '4', 'Spanish': '4',
     'Italienisch': '5', 'Italian': '5',
-    'S-Chinesisch': '6', 'Chinese': '6',
+    // v2.2.13: LANG_RE akzeptiert auch 'Chinesisch' und 'Simplified Chinese' — ohne diese
+    // Schluessel erzeugt der Export einen Wert, den das Update nicht aufloesen kann.
+    'S-Chinesisch': '6', 'Chinese': '6', 'Chinesisch': '6', 'Simplified Chinese': '6',
     'Japanisch': '7', 'Japanese': '7',
     'Portugiesisch': '8', 'Portuguese': '8',
     'Russisch': '9', 'Russian': '9',
     'Koreanisch': '10', 'Korean': '10',
-    'T-Chinesisch': '11',
+    'T-Chinesisch': '11', 'Traditional Chinese': '11',
+    // v2.2.13: Sprachen 12-17 fehlten hier komplett. Ohne Eintrag fiel der Lookup unten auf
+    // '3' (Deutsch) zurueck und hat die Sprache der Karte beim Bulk-Update ueberschrieben.
+    'Holländisch': '12', 'Niederländisch': '12', 'Dutch': '12',
+    'Polnisch': '13', 'Polish': '13',
+    'Tschechisch': '14', 'Czech': '14',
+    'Ungarisch': '15', 'Hungarian': '15',
+    'Indonesisch': '16', 'Indonesian': '16',
+    'Thailändisch': '17', 'Thai': '17',
   };
   async function directUpdate(u) {
     const targetId = u.rebindTo || u.articleId;
@@ -2466,30 +2881,71 @@ async function runBulkUpdate(args) {
     const fd = new FormData();
     fd.append('__cmtkn', tkn);
     fd.append('idArticle', targetId);
+    // v2.2.13: Weder raten noch weglassen.
+    // Dieser Endpoint ist ein VOLL-Update des Artikels: weggelassene Felder werden von Cardmarket
+    // verworfen, nicht bewahrt — belegt durch v2.2.4/2.2.5 weiter unten, wo genau deshalb die
+    // Varianten-Flags nachgeruestet werden mussten. Ein fehlendes idLanguage waere also nicht
+    // "sicher", sondern koennte die Sprache leeren oder das ganze Update verwerfen (unbemerkt,
+    // weil unten nur res.ok geprueft wird). Umgekehrt war der alte Default '3' echter Datenverlust:
+    // jede nicht erkannte Sprache wurde still auf Deutsch gesetzt.
+    // Loesung: aufloesen — und wenn das nicht geht, den Fast-Mode fuer DIESE Zeile verweigern.
+    // Der throw landet im catch des Aufrufers und faellt auf den Modal-Flow zurueck. Der oeffnet
+    // Cardmarkets eigenes Edit-Formular, das bereits mit den echten Werten des Artikels gefuellt
+    // ist, aendert nur den Preis (und optional die Comments) und laesst Sprache wie Zustand
+    // unberuehrt. Die Zeile wird also trotzdem korrekt aktualisiert, nur langsamer und sicher.
+    const rawLang = String(u.language ?? '').trim();
+    const langId = pageLangNameToId[rawLang] || STOCK_LANG_NAME_TO_ID[rawLang] || (/^\d+$/.test(rawLang) ? rawLang : '');
+    if (!langId) {
+      throw new Error(`Sprache nicht aufloesbar ("${rawLang || 'leer'}") — Fast Mode uebersprungen, Modal-Flow uebernimmt (schreibt die Sprache nicht um)`);
+    }
     // Condition: string value direkt aus CSV (NM/EX/LP/...)
-    fd.append('condition', u.condition || 'NM');
-    // Language: name → numeric ID
-    const langId = STOCK_LANG_NAME_TO_ID[u.language] || u.language || '3';
+    // v2.2.13: ebenfalls kein stiller Default mehr. 'NM' zu raten hat aus einer Played-Karte
+    // still eine Near-Mint-Karte gemacht, sobald die Condition-Spalte leer war.
+    const condVal = String(u.condition ?? '').trim();
+    if (!condVal) {
+      throw new Error('Zustand fehlt in der CSV — Fast Mode uebersprungen, Modal-Flow uebernimmt (setzt den Zustand nicht auf NM)');
+    }
+    fd.append('condition', condVal);
     fd.append('idLanguage', langId);
-    // Comments: u.newComments enthält CSV.Comments-wert (= aktuellen state, da CSV exportiert wurde mit CM-werten).
-    // Falls applyComments true → user hat editiert, wert ist neuer.
-    // Falls applyComments false → wert ist gleich wie CM (CSV-state). Sicheres noop-übergabe.
-    fd.append('comments', u.newComments || '');
+    // Comments
+    // v2.3.0: Ist "Comments mit-updaten" AUS, darf der CSV-Wert NICHT geschrieben werden. Das Popup
+    // sagt dem Nutzer ausdruecklich, dass seine Comment-Aenderungen dann ignoriert werden — bisher
+    // wurden sie trotzdem gesendet. Aus ist jetzt wirklich aus: es geht der frisch von Cardmarket
+    // gelesene Stand zurueck, nicht der (womoeglich editierte) aus der Tabelle.
+    // Ist der Toggle AUS, muss der Bestandswert zurueckgeschrieben werden. Konnte der gar nicht
+    // gelesen werden (Modal-Parser hat das Feld nicht gefunden), waere ein leeres comments-Feld
+    // gleichbedeutend mit "Kommentar loeschen" — dann lieber der Modal-Flow.
+    if (!u.applyComments && u.oldComments == null) {
+      throw new Error('Bisheriger Kommentar nicht lesbar — Fast Mode uebersprungen, Modal-Flow uebernimmt (loescht den Kommentar nicht)');
+    }
+    fd.append('comments', u.applyComments ? (u.newComments || '') : u.oldComments);
     // Price: dot-decimal
     fd.append('price', u.newPrice.toFixed(2));
-    // editAmount: aus CSV oder fallback 1
-    fd.append('editAmount', String(u.amount || 1));
+    // editAmount — das ist die BESTANDSMENGE des Artikels.
+    // v2.3.0: kein Raten mehr. Vorher wurde der Wert aus der (womoeglich Tage alten) CSV
+    // genommen und notfalls auf 1 gesetzt — das konnte den Bestand einer Karte stillschweigend
+    // auf 1 zusammenstreichen. Jetzt zaehlt der frisch von Cardmarket gelesene Wert; fehlt auch
+    // der, uebernimmt der Modal-Flow (der die Menge gar nicht anfasst).
+    // Die CSV ist hier bewusst KEINE Quelle: beim Einlesen wird Amount auf 1 defaultet
+    // (parseInt(r.Amount || '1') || 1), ein fehlender Wert kaeme also als "1" an und wuerde den
+    // Bestand zusammenstreichen. Es zaehlt nur der frisch von Cardmarket gelesene Wert.
+    const amountVal = String(u._fetchedAmount ?? '').trim();
+    if (!amountVal || !/^\d+$/.test(amountVal)) {
+      throw new Error('Bestandsmenge unbekannt — Fast Mode uebersprungen, Modal-Flow uebernimmt (aendert die Menge nicht)');
+    }
+    fd.append('editAmount', amountVal);
     // v2.2.4/2.2.5: variant flags MUST be passed — otherwise CM strips them (or rejects update)
     // Reported by LUPZN: reverse-holo cards were silently skipped/dropped during bulk-update.
     // Strategy: CSV value (u.reverseHolo) priority for isReverseHolo (user can toggle in CSV).
     // Other flags (foil/signed/altered/firstEd/playset) pulled from CM-fetched state (CSV doesn't have them).
     const flags = u._fetchedFlags || {};
     fd.append('isReverseHolo', u.reverseHolo ? '1' : '0');
-    if (flags.isFoil != null) fd.append('isFoil', flags.isFoil ? '1' : '0');
-    if (flags.isSigned != null) fd.append('isSigned', flags.isSigned ? '1' : '0');
-    if (flags.isAltered != null) fd.append('isAltered', flags.isAltered ? '1' : '0');
-    if (flags.isFirstEd != null) fd.append('isFirstEd', flags.isFirstEd ? '1' : '0');
-    if (flags.isPlayset != null) fd.append('isPlayset', flags.isPlayset ? '1' : '0');
+    // v2.3.0: alle vom Formular gelesenen Varianten zurueckschreiben, nicht nur die frueher fest
+    // aufgezaehlten. isReverseHolo bleibt ausgenommen, weil der Nutzer es in der CSV umschalten darf.
+    Object.keys(flags).forEach(n => {
+      if (n === 'isReverseHolo' || flags[n] == null) return;
+      fd.append(n, flags[n] ? '1' : '0');
+    });
     const res = await fetch(`/${lang}/${game}/AjaxAction/Article_EditSingleArticle`, {
       method: 'POST',
       credentials: 'include',
@@ -2497,6 +2953,63 @@ async function runBulkUpdate(args) {
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
     });
     if (!res.ok) throw new Error(`direct: HTTP ${res.status}`);
+
+    // v2.3.0: HTTP 200 war bisher der einzige Erfolgsbeweis. Cardmarkets AjaxAction-Endpoints
+    // liefern Validierungsfehler aber typischerweise MIT Status 200 im Body. Eine Zeile, deren
+    // Preis nie geschrieben wurde, galt damit als erfolgreich aktualisiert.
+    // Zwei Stufen, beide konservativ:
+    //  1. Body auf eindeutige Fehlersignale pruefen. Ein Fehlalarm ist unschaedlich — der throw
+    //     landet im Modal-Flow, der die Zeile korrekt aktualisiert, nur langsamer.
+    //  2. Ist "Nach Update verifizieren" aktiv, den Preis wirklich zurueckzulesen. Das galt
+    //     bisher nur fuer den Modal-Flow; im Fast Mode wurde die Option stillschweigend ignoriert.
+    // WICHTIG: den VOLLEN Body parsen. Frueher wurde vor dem Parsen auf 4000 Zeichen gekuerzt —
+    // eine Fehlerantwort enthaelt aber typischerweise das neu gerenderte Formularfragment und ist
+    // damit gerade die groesste Antwort. JSON.parse scheiterte, der catch verschluckte es, und der
+    // Fehlschlag galt als Erfolg: exakt der Fall, den diese Pruefung verhindern soll.
+    let bodyTxt = '';
+    try { bodyTxt = (await res.text()) || ''; } catch (e) { /* Body egal */ }
+    const trimmed = bodyTxt.trim();
+    if (trimmed) {
+      let failed = false;
+      let parsed = null;
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try { parsed = JSON.parse(trimmed); } catch (e) { parsed = null; }
+      }
+      if (parsed) {
+        // Bei Arrays ALLE Elemente pruefen, nicht nur das erste.
+        const nodes = Array.isArray(parsed) ? parsed : [parsed];
+        failed = nodes.some(o => o && (
+          o.success === false || o.ok === false
+          || (typeof o.error === 'string' && o.error.length > 0)
+          || (Array.isArray(o.errors) && o.errors.length > 0)
+        ));
+      } else {
+        // Kein (parsebares) JSON → Markup-Marker. `invalid-feedback` ist bewusst NICHT dabei:
+        // das ist Bootstrap-Grundgeruest und in jedem Formular vorhanden, auch im Erfolgsfall.
+        // Nur `is-invalid`/`has-error` werden tatsaechlich erst im Fehlerfall gesetzt.
+        failed = /\bis-invalid\b|\bhas-error\b/i.test(trimmed);
+      }
+      if (failed) throw new Error('direct: Cardmarket meldet einen Fehler im Antwort-Body (HTTP 200)');
+    }
+
+    // Ab hier ist der POST abgesetzt und von Cardmarket nicht beanstandet worden. Wirft die
+    // Verifikation unten trotzdem, darf der Aufrufer die Zeile NICHT ueber den Modal-Flow
+    // erneut schreiben — sonst wird derselbe Preis zweimal gesetzt. Der Marker unterscheidet
+    // "gar nicht geschrieben" von "geschrieben, aber nicht bestaetigt".
+    if (verify) {
+      const afterPost = (msg) => { const e = new Error(msg); e.afterPost = true; return e; };
+      // Ab hier ist der POST durch: JEDER Fehler muss als afterPost gelten, auch ein 429 oder
+      // Netzabbruch beim Nachladen. Sonst gilt die Zeile als "nie geschrieben" und der
+      // Modal-Flow setzt denselben Preis ein zweites Mal.
+      let verifyHtml;
+      try { verifyHtml = await fetchModal(targetId); }
+      catch (ve) { throw afterPost('direct: Verifikation nicht ladbar (' + ve.message + ')'); }
+      const actualPrice = parseCurrentPrice(verifyHtml);
+      if (actualPrice == null) throw afterPost('direct: Preis nach dem Update nicht lesbar');
+      if (Math.abs(actualPrice - u.newPrice) > 0.005) {
+        throw afterPost(`direct: Verifikation fehlgeschlagen — Cardmarket zeigt ${actualPrice}, erwartet ${u.newPrice}`);
+      }
+    }
     return true;
   }
 
@@ -2801,8 +3314,36 @@ async function runBulkUpdate(args) {
           if (delay) await new Promise(r => setTimeout(r, delay));
           continue;
         } catch (directErr) {
+          // v2.3.0: Schlug erst die Verifikation NACH dem POST fehl, ist der Preis moeglicherweise
+          // bereits geschrieben. Dann darf der Modal-Flow nicht erneut schreiben — sonst zweimal
+          // dieselbe Aenderung. Solche Zeilen werden als Fehler gezaehlt und benannt, damit der
+          // Nutzer sie gezielt nachsehen kann.
+          if (directErr && directErr.afterPost) {
+            err++;
+            errors.push({ articleId: targetId, msg: directErr.message + ' (POST war abgesetzt — bitte pruefen)' });
+            setStep('direct-unverified', targetId);
+            window.__cmUpdateProgress = { phase: 'updating-direct', done: i + 1, total, ok, err };
+            if (delay) await new Promise(r => setTimeout(r, delay));
+            continue;
+          }
+          // v2.3.0: Ohne #modal auf der Seite gibt es keinen Modal-Flow, auf den man
+          // zurueckfallen koennte — der Versuch endete in einem TypeError. Da die neuen
+          // Sicherheits-Abbrueche (Sprache/Zustand/Menge unklar) genau hier landen, muss der
+          // Fall sauber gemeldet werden statt zu krachen.
+          if (!modalContainer) {
+            err++;
+            errors.push({ articleId: targetId, msg: directErr.message + ' — kein Modal auf dieser Seite verfuegbar. Bitte eine Stock/Offers-Seite oeffnen.' });
+            setStep('direct-no-modal', targetId);
+            window.__cmUpdateProgress = { phase: 'updating-direct', done: i + 1, total, ok, err };
+            if (delay) await new Promise(r => setTimeout(r, delay));
+            continue;
+          }
           console.warn(`[CM-Update] [${targetId}] direct-mode failed (${directErr.message}), fallback auf modal-flow`);
           setStep('direct-fallback', targetId);
+          // v2.3.0: Rueckfaelle sichtbar machen. Vorher stand das nur in der Konsole des
+          // Cardmarket-Tabs — der Nutzer sah im Popup nur "OK" und wusste nicht, dass
+          // Fast Mode fuer diese Zeilen ausgesetzt hat (und warum).
+          directFallbacks.push({ articleId: targetId, msg: directErr.message });
         }
       }
 
@@ -2909,7 +3450,7 @@ async function runBulkUpdate(args) {
     if (delay) await new Promise(r => setTimeout(r, delay));
   }
 
-  const finalResult = { ok, err, errors, aborted: !!window.__cmUpdateStop };
+  const finalResult = { ok, err, errors, directFallbacks, aborted: !!window.__cmUpdateStop };
   window.__cmUpdateResult = finalResult;
   return finalResult;
  } catch (topErr) {
@@ -3164,7 +3705,10 @@ async function injectedWantsScrape({ delay }) {
 
     const allRows = [];
     const seenIdWants = new Set(); // dedupe per idWant
-    const LANG_RE = /^(Deutsch|Englisch|Französisch|Italienisch|Spanisch|Portugiesisch|Japanisch|Koreanisch|Chinesisch|Russisch|S-Chinesisch|T-Chinesisch|English|German|French|Italian|Spanish|Portuguese|Japanese|Korean|Chinese|Russian)$/;
+    // v2.2.13: alle 17 Kartensprachen, die Cardmarket fuehrt (DE- und EN-Schreibweise).
+    // Vorher endete die Liste bei 11 — Karten in Sprache 12-17 bekamen eine LEERE Language-Spalte,
+    // und das Bulk-Update hat sie danach auf Deutsch gesetzt.
+    const LANG_RE = /^(Deutsch|Englisch|Französisch|Italienisch|Spanisch|Portugiesisch|Japanisch|Koreanisch|Chinesisch|Russisch|S-Chinesisch|T-Chinesisch|Holländisch|Niederländisch|Polnisch|Tschechisch|Ungarisch|Indonesisch|Thailändisch|English|German|French|Italian|Spanish|Portuguese|Japanese|Korean|Chinese|Russian|Simplified Chinese|Traditional Chinese|Dutch|Polish|Czech|Hungarian|Indonesian|Thai)$/;
 
     for (let li = 0; li < wantlists.length; li++) {
       if (window.__cmWantsStop) break;
@@ -3330,7 +3874,21 @@ async function injectedWantsScrape({ delay }) {
           el.querySelectorAll('span[aria-label], span[data-bs-original-title], span[data-original-title], span[title]').forEach(s => {
             if (language) return;
             const l = s.getAttribute('aria-label') || s.getAttribute('data-bs-original-title') || s.getAttribute('data-original-title') || s.getAttribute('title') || '';
-            if (LANG_RE.test(l)) language = l;
+            // v2.3.0: wie im Stock-Scraper auch die Sprachnamen aus dem idLanguage-Dropdown
+            // dieser Seite akzeptieren. Ohne das bleibt die Language-Spalte auf /fr/, /es/ und
+            // /it/ leer — und ein Bulk-Edit wuerde solche Eintraege spaeter ueberspringen.
+            if (!window.__cmWantsLangNames) {
+              const set = new Set();
+              try {
+                document.querySelectorAll('select[name="idLanguage"] option, select[name="idLanguage[]"] option').forEach(o => {
+                  const n = (o.textContent || '').trim();
+                  if (n && (o.value || '') !== '0') set.add(n);
+                });
+              } catch (e) { /* kein Dropdown → nur LANG_RE */ }
+              window.__cmWantsLangNames = set;
+            }
+            const lt = (l || '').trim();
+            if (LANG_RE.test(lt) || window.__cmWantsLangNames.has(lt)) language = lt;
           });
 
           // Min Condition (badge or selected option)
@@ -3571,6 +4129,15 @@ btnWantsDelete.addEventListener('click', async () => {
       return;
     }
     wlog(tl(`${isDry ? 'DRY-RUN' : 'LIVE'} fertig: ${result.ok || 0} OK, ${result.err || 0} Fehler${result.editsOk != null ? ` (${result.editsOk} edits, ${result.deletesOk} deletes)` : ''}`, `${isDry ? 'DRY-RUN' : 'LIVE'} done: ${result.ok || 0} OK, ${result.err || 0} errors${result.editsOk != null ? ` (${result.editsOk} edits, ${result.deletesOk} deletes)` : ''}`), 'ok');
+    // v2.3.0: unauflösbare Sprachen melden statt sie stillschweigend wegzulassen
+    const wantsUnresolved = result.langUnresolved || [];
+    if (wantsUnresolved.length) {
+      const names = [...new Set(wantsUnresolved.map(x => x.name))].slice(0, 5).join(', ');
+      wlog(tl(
+        `⚠ ${wantsUnresolved.length} Eintrag/Einträge übersprungen — Sprache nicht bestimmbar (${names}). Diese Einträge wurden gar nicht verändert; bitte Wantlist neu exportieren.`,
+        `⚠ ${wantsUnresolved.length} entr(y/ies) skipped — language could not be determined (${names}). These entries were left untouched; please re-export your wantlist.`
+      ), 'err');
+    }
     if (!isDry && (result.ok > 0)) {
       wlog(tl(`⚠ "OK" heißt nur HTTP 200 — verifiziere durch refresh der Wants-Page ob Änderungen wirklich übernommen wurden!`, `⚠ "OK" only means HTTP 200 — verify by refreshing the Wants page whether the changes were actually applied!`), 'err');
       wlog(tl(`Falls Werte unverändert: Endpoint ist falsch. DevTools-Network-Trace bei manueller Edit-Aktion senden für exakten Endpoint.`, `If values are unchanged: the endpoint is wrong. Send a DevTools network trace of a manual edit action for the exact endpoint.`), 'err');
@@ -3593,6 +4160,20 @@ async function runWantsBulkDelete(args) {
     const editsArr = Array.isArray(edits) ? edits : [];
     let ok = 0, err = 0;
     const errors = [];
+    // v2.3.0: Sprachnamen bevorzugt aus dem Dropdown DIESER Seite aufloesen — deckt automatisch
+    // alle Oberflaechensprachen ab. langUnresolved sammelt, was trotzdem nicht auflösbar war.
+    const langUnresolved = [];
+    const wantsPageLangNameToId = (() => {
+      const map = {};
+      try {
+        document.querySelectorAll('select[name="idLanguage"] option, select[name="idLanguage[]"] option').forEach(o => {
+          const val = (o.value || '').trim();
+          const nm = (o.textContent || '').trim();
+          if (val && /^\d+$/.test(val) && val !== '0' && nm) map[nm] = val;
+        });
+      } catch (e) { /* kein Dropdown → Tabelle uebernimmt */ }
+      return map;
+    })();
     const pathParts = location.pathname.split('/').filter(Boolean);
     const lang = pathParts[0] || 'de';
     const game = pathParts[1] || 'Pokemon';
@@ -3628,12 +4209,19 @@ async function runWantsBulkDelete(args) {
             'Deutsch': '3', 'German': '3',
             'Spanisch': '4', 'Spanish': '4',
             'Italienisch': '5', 'Italian': '5',
-            'S-Chinesisch': '6', 'Chinese': '6',
+            'S-Chinesisch': '6', 'Chinese': '6', 'Chinesisch': '6', 'Simplified Chinese': '6',
             'Japanisch': '7', 'Japanese': '7',
             'Portugiesisch': '8', 'Portuguese': '8',
             'Russisch': '9', 'Russian': '9',
             'Koreanisch': '10', 'Korean': '10',
-            'T-Chinesisch': '11',
+            'T-Chinesisch': '11', 'Traditional Chinese': '11',
+            // v2.2.13: Sprachen 12-17 ergaenzt (siehe STOCK_LANG_NAME_TO_ID).
+            'Holländisch': '12', 'Niederländisch': '12', 'Dutch': '12',
+            'Polnisch': '13', 'Polish': '13',
+            'Tschechisch': '14', 'Czech': '14',
+            'Ungarisch': '15', 'Hungarian': '15',
+            'Indonesisch': '16', 'Indonesian': '16',
+            'Thailändisch': '17', 'Thai': '17',
           };
           const COND_NAME_TO_ID = {
             'MT': '1', 'NM': '2', 'EX': '3', 'GD': '4', 'LP': '5', 'PL': '6', 'PO': '7',
@@ -3650,14 +4238,33 @@ async function runWantsBulkDelete(args) {
           fd.append('idProductEmptyInput', '');
           const v = e.newValues || {};
           // Language → numeric ID
-          if (v.language) {
-            const langId = LANG_NAME_TO_ID[v.language] || v.language; // accept raw ID if user already entered numeric
+          // v2.3.0: Dieser POST ist ein VOLL-Update des Wants-Eintrags, und idLanguageEmptyInput
+          // unten ist Cardmarkets Marker fuer "Feld gesendet, Auswahl leer". Ein POST ohne
+          // idLanguage[], aber mit dem Marker, loescht also die Sprachpraeferenz. Deshalb wird
+          // hier nichts geraten und nichts halb gesendet: laesst sich die Sprache nicht sicher
+          // bestimmen, bleibt der Eintrag unangetastet und wird als Fehler gemeldet.
+          // LEER ist hier ein gueltiger Zustand: ein Wunsch ohne Sprachvorgabe gilt fuer alle
+          // Sprachen und ist der Normalfall. Genau dafuer existiert idLanguageEmptyInput —
+          // Cardmarkets eigenes Formular schickt es bei leerer Mehrfachauswahl ebenso.
+          // Abgebrochen wird nur, wenn ein GESETZTER Wert nicht aufloesbar ist; frueher ging der
+          // dann roh an Cardmarket.
+          const rawL = String(v.language ?? '').trim();
+          if (rawL) {
+            const langId = wantsPageLangNameToId[rawL] || LANG_NAME_TO_ID[rawL] || (/^\d+$/.test(rawL) ? rawL : '');
+            if (!langId) {
+              langUnresolved.push({ id: e.idWant, name: rawL });
+              throw new Error(`Sprache nicht aufloesbar ("${rawL}") — Eintrag unveraendert gelassen`);
+            }
             fd.append('idLanguage[]', langId);
           }
           fd.append('idLanguageEmptyInput', '');
           // Condition → numeric ID
           if (v.minCondition) {
-            const condId = COND_NAME_TO_ID[v.minCondition] || v.minCondition;
+            // v2.3.0: wie bei der Sprache nichts Unbekanntes durchreichen. Ein roher Wert
+            // ("Near-Mint", ein Tippfehler) landete bisher unveraendert im POST.
+            const rawC = String(v.minCondition).trim();
+            const condId = COND_NAME_TO_ID[rawC] || (/^[1-7]$/.test(rawC) ? rawC : '');
+            if (!condId) throw new Error(`Zustand nicht aufloesbar ("${rawC}") — Eintrag unveraendert gelassen`);
             fd.append('minCondition', condId);
           }
           if (v.quantity) fd.append('amount', v.quantity);
@@ -3721,7 +4328,7 @@ async function runWantsBulkDelete(args) {
       if (delay) await sleep(delay);
     }
 
-    return { ok, err, errors };
+    return { ok, err, errors, langUnresolved };
   } catch (topErr) {
     return { ok: 0, err: 1, errors: [{ idWant: 'TOP', msg: topErr.message }] };
   }

@@ -6,6 +6,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), version
 
 ---
 
+## [2.3.0] — 2026-08-23
+
+Every game Cardmarket sells is now exportable, and along the way several things the export and Bulk-Update relied on turned out to be wrong. Two of them were changing your listings without telling you. Prompted by a store review from Andreas Gast, who pointed out that Cardmarket had outgrown the eight games this extension offered. Thank you!
+
+### Added
+
+- **All 20 Cardmarket games.** The game picker previously offered 8. It now covers every game Cardmarket runs: Riftbound, Star Wars Unlimited, Final Fantasy, Cardfight!! Vanguard, Weiß Schwarz, Battle Spirits Saga, Force of Will, World of Warcraft, Star Wars: Destiny, Dragoborne, My Little Pony and The Spoils join the existing eight.
+- **Per-game variant filters.** Cardmarket exposes a different set of variant filters for each game, so the export no longer assumes Pokémon's. Reverse Holo exists only for Pokémon, most games use Foil, Yu-Gi-Oh! uses First Edition, Star Wars: Destiny has "with die", and Force of Will adds Full Art and Uber Rare. The export now reads each game's own filters.
+- **All 17 card languages.** Cardmarket lists 17; the filter offered 12. Dutch, Polish, Czech, Hungarian and Thai were missing, and the export's internal subdivision stopped at language 12, so stock in those languages was never checked as its own scope.
+- **`FullArt`, `UberRare` and `WithDie` columns** in the stock export, for Force of Will and Star Wars: Destiny. They read `N` for every other game. Bulk-Update reads the CSV by column name, so existing sheets keep working.
+- **Fast Mode now honours "verify after update".** The option existed but only ever applied to the slow modal flow; in Fast Mode it was silently ignored. It now re-reads the price from Cardmarket after writing it.
+- **Rows that fall back from Fast Mode are reported.** The log now says how many rows went through the slower modal flow and why, grouped by reason. Previously this was only visible in the Cardmarket tab's developer console.
+
+### Fixed
+
+- **Digimon exports failed completely.** The game picker sent `DigimonCardGame`, but Cardmarket's path is `Digimon`, so every Digimon export hit an HTTP 404. One of the eight advertised games had never worked.
+- **"Indonesian" filtered Polish.** The card-language checkbox labelled Indonesian sent language ID 13, which is Polish on Cardmarket. Indonesian is 16. Anyone filtering for Indonesian silently got the wrong language.
+- **The condition subdivision did nothing.** When a scope hit Cardmarket's 300-listing cap, the export subdivided it by condition. Cardmarket ignores the condition parameter on the stock page entirely (verified: filtering for Mint and for Poor both return the identical, unfiltered result), so that step made seven extra requests per scope and split nothing. It is replaced by **rarity**, which does filter, and whose values are read from the page for whichever game you are exporting.
+- **Bulk-Update could overwrite a card's language with German, and its condition with Near Mint.** Fast Mode filled in defaults when a value could not be read from the CSV: language fell back to ID 3 (German) and condition to `NM`, and both were then written to the live listing. The export recognised only 11 of the 17 languages, so Dutch, Polish, Czech, Hungarian, Indonesian and Thai listings were affected, as was any row whose language or condition cell was empty. Language names are now read from Cardmarket's own dropdown, which covers every interface language including French, Spanish and Italian, where none were recognised before. Where a value still cannot be resolved, Fast Mode hands that row to the slower modal flow, which edits Cardmarket's own pre-filled form and therefore updates the price while leaving language and condition untouched. Nothing is guessed any more. **If you have run a Bulk-Update on listings in those languages, or on a CSV with empty language or condition cells, check them.**
+- **The listing counter is now read in every interface language.** v2.2.11 compared the export against Cardmarket's result counter by matching words like "Results" and "Ergebnisse". The German stock page says "Treffer", so the check never ran for German users and the v2.2.11 recovery was inactive for them. The count is now read from the `total-count` element Cardmarket renders identically in every language.
+- **Fast Mode counted failed updates as successes.** It treated any HTTP 200 as proof the update went through. Cardmarket's AJAX endpoints return validation failures *with* status 200, so a listing whose price was never written still counted as OK. The response is now inspected, and a row that reports an error is handed to the modal flow instead.
+- **A capped scope was abandoned when card languages were filtered.** Picking specific card languages in the popup put the language into the base filter, and the subdivision then stopped before it began. A set-plus-language scope over Cardmarket's 300-listing cap was silently truncated. It is now subdivided by rarity and variant like any other scope.
+- **Six games had no fallback axis.** Yu-Gi-Oh!, One Piece, Digimon, Flesh and Blood, Cardfight!! Vanguard and Weiß Schwarz have no print variant, so a capped scope could not be split at all if the rarity list was unavailable. Each game now has an ordered list of axes (first edition, signed, altered as applicable), and the subdivision keeps going while a half is still capped, instead of stopping after one split.
+- **Want-Lists bulk-edit could send an unrecognised language straight to Cardmarket.** An unresolved language name was passed through as-is. It is now resolved against Cardmarket's own dropdown; if that fails the field is left out and the affected entries are named in the log.
+- **A blocked rarity lookup no longer stalls the run.** It retries a 429 once, refuses to treat a Cloudflare page as "this game has no rarity filter", and gives up for the rest of the run after three failures instead of paying the retry cost on every capped scope.
+
+---
+
 ## [2.2.12] — 2026-08-23
 
 ### Fixed

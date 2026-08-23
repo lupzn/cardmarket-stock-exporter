@@ -1,124 +1,582 @@
 {
-  "extName": { "message": "Cardmarket Stock Exporter" },
-  "extDescription": { "message": "Cardmarket: export stock & wantlists to CSV. Bulk-update prices/comments via CSV. Fast Mode (~10x), 8 TCGs, 5 languages. by LUPZN" },
-  "extTitle": { "message": "Cardmarket Stock Exporter by LUPZN" },
-
-  "header_title": { "message": "Cardmarket Stock → CSV" },
-  "btn_pin": { "message": "📌 Pin" },
-  "tooltip_pin": { "message": "Open in own window (won't close accidentally)" },
-  "hint_main": { "message": "Open a <b>Stock/Offers</b> page first. Click <b>📌 Pin</b> so the popup doesn't fly away." },
-
-  "tab_export": { "message": "📥 Export" },
-  "tab_update": { "message": "✏️ Bulk Update" },
-  "tab_wants": { "message": "📋 Wants" },
-
-  "label_game": { "message": "Game" },
-  "label_card_lang_filter": { "message": "Filter card languages" },
-  "label_card_lang_filter_hint": { "message": "(empty = all languages)" },
-  "lang_de": { "message": "German" },
-  "lang_en": { "message": "English" },
-  "lang_fr": { "message": "French" },
-  "lang_es": { "message": "Spanish" },
-  "lang_it": { "message": "Italian" },
-  "lang_pt": { "message": "Portuguese" },
-  "lang_jp": { "message": "Japanese" },
-  "lang_kr": { "message": "Korean" },
-  "lang_scn": { "message": "S-Chinese" },
-  "lang_tcn": { "message": "T-Chinese" },
-  "lang_ru": { "message": "Russian" },
-  "lang_id": { "message": "Indonesian" },
-  "lang_select_all": { "message": "All" },
-  "lang_select_none": { "message": "None" },
-  "lang_select_asian": { "message": "Asian only" },
-
-  "label_max_pages": { "message": "Max pages (0 = all)" },
-  "label_delay_ms": { "message": "Delay (ms)" },
-  "opt_sortby": { "message": "sortBy=name_asc" },
-  "opt_per_expansion": { "message": "Iterate per expansion (required for >300)" },
-  "btn_run_export": { "message": "Start full export" },
-  "set_export_hint": { "message": "Or export specific sets from your stock:" },
-  "btn_load_sets": { "message": "Load my sets" },
-  "btn_load_sets_running": { "message": "Loading sets…" },
-  "btn_export_sets": { "message": "Export selected sets ($COUNT$)", "placeholders": { "count": { "content": "$1", "example": "3" } } },
-  "log_no_sets_found": { "message": "No sets found. Open a stock page that has cards." },
-  "log_sets_loaded": { "message": "$N$ sets loaded. Tick the ones you want, then click \"Export selected sets\".", "placeholders": { "n": { "content": "$1", "example": "12" } } },
-  "btn_abort": { "message": "Abort" },
-  "hint_keep_open": { "message": "⚠ Keep popup open during export — or click <b>📌 Pin</b>" },
-
-  "update_hint": { "message": "Edit CSV + upload → preview shows diff → update.<br><b>Bulk-editable:</b> <code>Price_EUR</code> (always), <code>Comments</code> (when toggle \"Update comments\" is on).<br><b>DO NOT edit:</b> <code>_OriginalPrice_EUR</code> + <code>_OriginalComments</code> (read-only ref columns for skip-fetch).<br>Other columns are ignored." },
-  "label_csv_select": { "message": "Select CSV file" },
-  "label_max_change_pct": { "message": "Max price change (%)" },
-  "label_update_delay": { "message": "Delay per update (ms)" },
-  "opt_dryrun": { "message": "<b>Dry-Run</b> (nothing is saved — test only)" },
-  "opt_verify_after": { "message": "Verify after update (slower but safer)" },
-  "opt_update_comments": { "message": "Update comments too (empty CSV cell = delete comment on CM)" },
-  "opt_fast_mode": { "message": "⚡ <b>Fast Mode</b> (Direct AJAX, no modal render, ~10× faster, CF-friendly)" },
-  "opt_slow_mode": { "message": "🐢 <b>Slow Mode</b> (Cloudflare-safe, 1 req/2s, recommended for >500 cards)" },
-  "set_filter_label": { "message": "<b>Select sets:</b> only checked sets will be updated" },
-  "set_filter_all": { "message": "All" },
-  "set_filter_none": { "message": "None" },
-  "btn_analyze": { "message": "Analyze CSV + Preview" },
-  "btn_confirm_update": { "message": "Confirm update: $COUNT$ articles", "placeholders": { "count": { "content": "$1", "example": "42" } } },
-
-  "wants_export_hint": { "message": "Exports all your wantlists as CSV. One combined file with a <code>WantListName</code> column.<br>Optional: edit CSV in Excel + upload here to delete entries (column <code>delete=Y</code>)." },
-  "btn_wants_export": { "message": "📥 Export all wantlists" },
-  "wants_bulk_hint": { "message": "<b>Bulk-Delete + Bulk-Edit:</b> edit CSV + upload.<br><b>Editable:</b> <code>Language</code>, <code>MinCondition</code>, <code>IsFoil</code>, <code>IsSigned</code>, <code>IsAltered</code>, <code>IsPlayset</code>, <code>IsReverseHolo</code>, <code>MaxPrice_EUR</code>, <code>Quantity</code>, <code>delete</code>.<br><b>DO NOT edit:</b> all <code>_Original*</code> columns (read-only refs for skip-fetch).<br><code>delete=Y</code> → entry will be deleted. Changed fields → entry will be edited. Default: Dry-Run on." },
-  "label_wants_csv_select": { "message": "Select wants CSV (for Bulk-Delete + Bulk-Edit)" },
-  "opt_wants_dryrun": { "message": "<b>Dry-Run</b> (nothing is deleted — test only)" },
-  "btn_wants_analyze": { "message": "Analyze CSV + Preview" },
-  "btn_wants_confirm": { "message": "Confirm: $COUNT$", "placeholders": { "count": { "content": "$1", "example": "10" } } },
-
-  "donation_text": { "message": "Like this tool? Donate:" },
-  "donation_button": { "message": "♥ PayPal Donate" },
-  "locale_label": { "message": "CM-UI Locale:" },
-  "locale_auto": { "message": "auto" },
-  "locale_manual": { "message": "manual" },
-  "brand_made_with": { "message": "made with ♥ by" },
-
-  "log_path_info": { "message": "Path: $PATH$ | sortBy=$SORT$ | perExpansion=$PER$ | delay=$DELAY$ms$LANGS$", "placeholders": { "path": { "content": "$1" }, "sort": { "content": "$2" }, "per": { "content": "$3" }, "delay": { "content": "$4" }, "langs": { "content": "$5" } } },
-  "log_card_langs": { "message": " | Languages: $LANGS$", "placeholders": { "langs": { "content": "$1" } } },
-  "log_no_cm_tab": { "message": "No Cardmarket tab found. Open a Stock page first." },
-  "log_pin_error": { "message": "Pin error: $MSG$", "placeholders": { "msg": { "content": "$1" } } },
-  "log_abort_requested": { "message": "Abort requested..." },
-  "log_abort_error": { "message": "Abort error: $MSG$", "placeholders": { "msg": { "content": "$1" } } },
-  "log_error": { "message": "Error: $MSG$", "placeholders": { "msg": { "content": "$1" } } },
-  "log_exception": { "message": "Exception: $MSG$", "placeholders": { "msg": { "content": "$1" } } },
-  "log_pages_scanned": { "message": "Pages scanned: $N$", "placeholders": { "n": { "content": "$1" } } },
-  "log_pagination_widget": { "message": "Pagination widget: $N$ pages", "placeholders": { "n": { "content": "$1" } } },
-  "log_rows_dedup": { "message": "Rows (dedup): $N$", "placeholders": { "n": { "content": "$1" } } },
-  "log_rows_no_amount": { "message": "⚠ Rows without amount: $N$", "placeholders": { "n": { "content": "$1" } } },
-  "log_rows_no_idproduct": { "message": "⚠ Rows without idProduct: $N$ ($PCT$%) — usually cards without CM image (new sets, special promos). Auto-rebind only works for rows WITH idProduct.", "placeholders": { "n": { "content": "$1" }, "pct": { "content": "$2" } } },
-  "log_idproduct_ok": { "message": "✓ idProduct extracted for all $N$ rows", "placeholders": { "n": { "content": "$1" } } },
-  "log_total_amounts": { "message": "Total amounts: $N$", "placeholders": { "n": { "content": "$1" } } },
-  "log_total_value": { "message": "Total value: $V$ €", "placeholders": { "v": { "content": "$1" } } },
-  "log_no_rows": { "message": "No rows. Check login + path." },
-  "log_download": { "message": "Download: $FILE$", "placeholders": { "file": { "content": "$1" } } },
-  "log_download_error": { "message": "Download error: $MSG$", "placeholders": { "msg": { "content": "$1" } } },
-  "progress_starting": { "message": "Starting..." },
-  "progress_expansion": { "message": "Set $IDX$/$TOTAL$ $NAME$", "placeholders": { "idx": { "content": "$1" }, "total": { "content": "$2" }, "name": { "content": "$3" } } },
-  "progress_all": { "message": "ALL" },
-  "progress_scrape_status": { "message": "$EXP$ | Page $PAGE$ | Rows $ROWS$ | Stock $STOCK$$ERR$", "placeholders": { "exp": { "content": "$1" }, "page": { "content": "$2" }, "rows": { "content": "$3" }, "stock": { "content": "$4" }, "err": { "content": "$5" } } },
-
-  "csv_analyzing": { "message": "Analyzing CSV..." },
-  "csv_no_changes": { "message": "No changes detected." },
-  "csv_changes_found": { "message": "$N$ articles with changes found", "placeholders": { "n": { "content": "$1" } } },
-  "csv_dryrun_warning": { "message": "🧪 Dry-Run active — nothing will actually be written to Cardmarket." },
-  "csv_will_delete": { "message": "🗑 $N$ listings will be DELETED (delete=Y in CSV). NOT reversible!", "placeholders": { "n": { "content": "$1" } } },
-  "csv_stale_warning": { "message": "⚠ CSV is $H$h old — recommended: re-export before bulk-update", "placeholders": { "h": { "content": "$1" } } },
-  "csv_tab_mismatch": { "message": "⚠ CSV exported from /$CSV_LANG$/$CSV_GAME$/, currently active /$CUR_LANG$/$CUR_GAME$/. Continue anyway?", "placeholders": { "csv_lang": { "content": "$1" }, "csv_game": { "content": "$2" }, "cur_lang": { "content": "$3" }, "cur_game": { "content": "$4" } } },
-  "update_running": { "message": "Update running: $DONE$/$TOTAL$ ($PCT$%)", "placeholders": { "done": { "content": "$1" }, "total": { "content": "$2" }, "pct": { "content": "$3" } } },
-  "update_done": { "message": "✓ Update finished: $OK$ ok, $FAIL$ errors", "placeholders": { "ok": { "content": "$1" }, "fail": { "content": "$2" } } },
-  "update_aborted": { "message": "Update aborted by user." },
-
-  "wants_starting": { "message": "Starting wants export..." },
-  "wants_lists_found": { "message": "$N$ wantlists found", "placeholders": { "n": { "content": "$1" } } },
-  "wants_processing": { "message": "List $IDX$/$TOTAL$ $NAME$", "placeholders": { "idx": { "content": "$1" }, "total": { "content": "$2" }, "name": { "content": "$3" } } },
-  "wants_no_lists": { "message": "No wantlists found. Logged in?" },
-  "wants_no_entries": { "message": "No entries found." },
-  "wants_csv_invalid": { "message": "CSV seems invalid — no want IDs detected." },
-  "wants_will_delete": { "message": "$N$ entries will be deleted", "placeholders": { "n": { "content": "$1" } } },
-  "wants_will_edit": { "message": "$N$ entries will be edited", "placeholders": { "n": { "content": "$1" } } },
-
-  "cf_detected": { "message": "🛡️ Cloudflare challenge detected — backoff $S$s", "placeholders": { "s": { "content": "$1" } } },
-  "cf_cascade_abort": { "message": "🛑 20 errors in a row → auto-abort. Close tabs, wait 10-15min, clear cookies, log in again, retry with Slow Mode." }
+  "extName": {
+    "message": "Cardmarket Stock Exporter"
+  },
+  "extDescription": {
+    "message": "Cardmarket: export stock & wantlists to CSV. Bulk-update prices/comments via CSV. Fast Mode (~10x), every game, 17 languages. by LUPZN"
+  },
+  "extTitle": {
+    "message": "Cardmarket Stock Exporter by LUPZN"
+  },
+  "header_title": {
+    "message": "Cardmarket Stock → CSV"
+  },
+  "btn_pin": {
+    "message": "Pin"
+  },
+  "tooltip_pin": {
+    "message": "Open in own window (won't close accidentally)"
+  },
+  "hint_main": {
+    "message": "Open a <b>Stock/Offers</b> page first. Click <b>Pin</b> so the popup doesn't fly away."
+  },
+  "tab_export": {
+    "message": "Export"
+  },
+  "tab_update": {
+    "message": "Bulk Update"
+  },
+  "tab_wants": {
+    "message": "Wants"
+  },
+  "label_game": {
+    "message": "Game"
+  },
+  "label_card_lang_filter": {
+    "message": "Filter card languages"
+  },
+  "label_card_lang_filter_hint": {
+    "message": "(empty = all languages)"
+  },
+  "lang_de": {
+    "message": "German"
+  },
+  "lang_en": {
+    "message": "English"
+  },
+  "lang_fr": {
+    "message": "French"
+  },
+  "lang_es": {
+    "message": "Spanish"
+  },
+  "lang_it": {
+    "message": "Italian"
+  },
+  "lang_pt": {
+    "message": "Portuguese"
+  },
+  "lang_jp": {
+    "message": "Japanese"
+  },
+  "lang_kr": {
+    "message": "Korean"
+  },
+  "lang_scn": {
+    "message": "S-Chinese"
+  },
+  "lang_tcn": {
+    "message": "T-Chinese"
+  },
+  "lang_ru": {
+    "message": "Russian"
+  },
+  "lang_id": {
+    "message": "Indonesian"
+  },
+  "lang_nl": {
+    "message": "Dutch"
+  },
+  "lang_pl": {
+    "message": "Polish"
+  },
+  "lang_cs": {
+    "message": "Czech"
+  },
+  "lang_hu": {
+    "message": "Hungarian"
+  },
+  "lang_th": {
+    "message": "Thai"
+  },
+  "lang_select_all": {
+    "message": "All"
+  },
+  "lang_select_none": {
+    "message": "None"
+  },
+  "lang_select_asian": {
+    "message": "Asian only"
+  },
+  "label_max_pages": {
+    "message": "Max pages (0 = all)"
+  },
+  "label_delay_ms": {
+    "message": "Delay (ms)"
+  },
+  "opt_sortby": {
+    "message": "sortBy=name_asc"
+  },
+  "opt_per_expansion": {
+    "message": "Iterate per expansion (required for >300)"
+  },
+  "btn_run_export": {
+    "message": "Start full export"
+  },
+  "set_export_hint": {
+    "message": "Or export specific sets from your stock:"
+  },
+  "btn_load_sets": {
+    "message": "Load my sets"
+  },
+  "btn_load_sets_running": {
+    "message": "Loading sets…"
+  },
+  "btn_export_sets": {
+    "message": "Export selected sets ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "log_no_sets_found": {
+    "message": "No sets found. Open a stock page that has cards."
+  },
+  "log_sets_loaded": {
+    "message": "$N$ sets loaded. Tick the ones you want, then click \"Export selected sets\".",
+    "placeholders": {
+      "n": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "btn_abort": {
+    "message": "Abort"
+  },
+  "hint_keep_open": {
+    "message": "Keep popup open during export — or click <b>Pin</b>"
+  },
+  "update_hint": {
+    "message": "Edit CSV + upload → preview shows diff → update.<br><b>Bulk-editable:</b> <code>Price_EUR</code> (always), <code>Comments</code> (when toggle \"Update comments\" is on).<br><b>DO NOT edit:</b> <code>_OriginalPrice_EUR</code> + <code>_OriginalComments</code> (read-only ref columns for skip-fetch).<br>Other columns are ignored."
+  },
+  "label_csv_select": {
+    "message": "Select CSV file"
+  },
+  "label_max_change_pct": {
+    "message": "Max price change (%)"
+  },
+  "label_update_delay": {
+    "message": "Delay per update (ms)"
+  },
+  "opt_dryrun": {
+    "message": "<b>Dry-Run</b> (nothing is saved — test only)"
+  },
+  "opt_verify_after": {
+    "message": "Verify after update (slower but safer)"
+  },
+  "opt_update_comments": {
+    "message": "Update comments too (empty CSV cell = delete comment on CM)"
+  },
+  "opt_fast_mode": {
+    "message": "<b>Fast Mode</b> (Direct AJAX, no modal render, ~10× faster, CF-friendly)"
+  },
+  "opt_slow_mode": {
+    "message": "<b>Slow Mode</b> (Cloudflare-safe, 1 req/2s, recommended for >500 cards)"
+  },
+  "set_filter_label": {
+    "message": "<b>Select sets:</b> only checked sets will be updated"
+  },
+  "set_filter_all": {
+    "message": "All"
+  },
+  "set_filter_none": {
+    "message": "None"
+  },
+  "btn_analyze": {
+    "message": "Analyze CSV + Preview"
+  },
+  "btn_confirm_update": {
+    "message": "Confirm update: $COUNT$ articles",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "42"
+      }
+    }
+  },
+  "wants_export_hint": {
+    "message": "Exports all your wantlists as CSV. One combined file with a <code>WantListName</code> column.<br>Optional: edit CSV in Excel + upload here to delete entries (column <code>delete=Y</code>)."
+  },
+  "btn_wants_export": {
+    "message": "Export all wantlists"
+  },
+  "wants_bulk_hint": {
+    "message": "<b>Bulk-Delete + Bulk-Edit:</b> edit CSV + upload.<br><b>Editable:</b> <code>Language</code>, <code>MinCondition</code>, <code>IsFoil</code>, <code>IsSigned</code>, <code>IsAltered</code>, <code>IsPlayset</code>, <code>IsReverseHolo</code>, <code>MaxPrice_EUR</code>, <code>Quantity</code>, <code>delete</code>.<br><b>DO NOT edit:</b> all <code>_Original*</code> columns (read-only refs for skip-fetch).<br><code>delete=Y</code> → entry will be deleted. Changed fields → entry will be edited. Default: Dry-Run on."
+  },
+  "label_wants_csv_select": {
+    "message": "Select wants CSV (for Bulk-Delete + Bulk-Edit)"
+  },
+  "opt_wants_dryrun": {
+    "message": "<b>Dry-Run</b> (nothing is deleted — test only)"
+  },
+  "btn_wants_analyze": {
+    "message": "Analyze CSV + Preview"
+  },
+  "btn_wants_confirm": {
+    "message": "Confirm: $COUNT$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "10"
+      }
+    }
+  },
+  "locale_label": {
+    "message": "CM-UI Locale:"
+  },
+  "locale_auto": {
+    "message": "auto"
+  },
+  "locale_manual": {
+    "message": "manual"
+  },
+  "brand_made_with": {
+    "message": "built by"
+  },
+  "log_path_info": {
+    "message": "Path: $PATH$ | sortBy=$SORT$ | perExpansion=$PER$ | delay=$DELAY$ms$LANGS$",
+    "placeholders": {
+      "path": {
+        "content": "$1"
+      },
+      "sort": {
+        "content": "$2"
+      },
+      "per": {
+        "content": "$3"
+      },
+      "delay": {
+        "content": "$4"
+      },
+      "langs": {
+        "content": "$5"
+      }
+    }
+  },
+  "log_card_langs": {
+    "message": "| Languages: $LANGS$",
+    "placeholders": {
+      "langs": {
+        "content": "$1"
+      }
+    }
+  },
+  "log_no_cm_tab": {
+    "message": "No Cardmarket tab found. Open a Stock page first."
+  },
+  "log_pin_error": {
+    "message": "Pin error: $MSG$",
+    "placeholders": {
+      "msg": {
+        "content": "$1"
+      }
+    }
+  },
+  "log_abort_requested": {
+    "message": "Abort requested..."
+  },
+  "log_abort_error": {
+    "message": "Abort error: $MSG$",
+    "placeholders": {
+      "msg": {
+        "content": "$1"
+      }
+    }
+  },
+  "log_error": {
+    "message": "Error: $MSG$",
+    "placeholders": {
+      "msg": {
+        "content": "$1"
+      }
+    }
+  },
+  "log_exception": {
+    "message": "Exception: $MSG$",
+    "placeholders": {
+      "msg": {
+        "content": "$1"
+      }
+    }
+  },
+  "log_pages_scanned": {
+    "message": "Pages scanned: $N$",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      }
+    }
+  },
+  "log_pagination_widget": {
+    "message": "Pagination widget: $N$ pages",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      }
+    }
+  },
+  "log_rows_dedup": {
+    "message": "Rows (dedup): $N$",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      }
+    }
+  },
+  "log_rows_no_amount": {
+    "message": "⚠ Rows without amount: $N$",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      }
+    }
+  },
+  "log_rows_no_idproduct": {
+    "message": "⚠ Rows without idProduct: $N$ ($PCT$%) — usually cards without CM image (new sets, special promos). Auto-rebind only works for rows WITH idProduct.",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      },
+      "pct": {
+        "content": "$2"
+      }
+    }
+  },
+  "log_idproduct_ok": {
+    "message": "✓ idProduct extracted for all $N$ rows",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      }
+    }
+  },
+  "log_total_amounts": {
+    "message": "Total amounts: $N$",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      }
+    }
+  },
+  "log_total_value": {
+    "message": "Total value: $V$ €",
+    "placeholders": {
+      "v": {
+        "content": "$1"
+      }
+    }
+  },
+  "log_no_rows": {
+    "message": "No rows. Check login + path."
+  },
+  "log_download": {
+    "message": "Download: $FILE$",
+    "placeholders": {
+      "file": {
+        "content": "$1"
+      }
+    }
+  },
+  "log_download_error": {
+    "message": "Download error: $MSG$",
+    "placeholders": {
+      "msg": {
+        "content": "$1"
+      }
+    }
+  },
+  "progress_starting": {
+    "message": "Starting..."
+  },
+  "progress_expansion": {
+    "message": "Set $IDX$/$TOTAL$ $NAME$",
+    "placeholders": {
+      "idx": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      },
+      "name": {
+        "content": "$3"
+      }
+    }
+  },
+  "progress_all": {
+    "message": "ALL"
+  },
+  "progress_scrape_status": {
+    "message": "$EXP$ | Page $PAGE$ | Rows $ROWS$ | Stock $STOCK$$ERR$",
+    "placeholders": {
+      "exp": {
+        "content": "$1"
+      },
+      "page": {
+        "content": "$2"
+      },
+      "rows": {
+        "content": "$3"
+      },
+      "stock": {
+        "content": "$4"
+      },
+      "err": {
+        "content": "$5"
+      }
+    }
+  },
+  "csv_analyzing": {
+    "message": "Analyzing CSV..."
+  },
+  "csv_no_changes": {
+    "message": "No changes detected."
+  },
+  "csv_changes_found": {
+    "message": "$N$ articles with changes found",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      }
+    }
+  },
+  "csv_dryrun_warning": {
+    "message": "Dry-Run active — nothing will actually be written to Cardmarket."
+  },
+  "csv_will_delete": {
+    "message": "$N$ listings will be DELETED (delete=Y in CSV). NOT reversible!",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      }
+    }
+  },
+  "csv_stale_warning": {
+    "message": "⚠ CSV is $H$h old — recommended: re-export before bulk-update",
+    "placeholders": {
+      "h": {
+        "content": "$1"
+      }
+    }
+  },
+  "csv_tab_mismatch": {
+    "message": "⚠ CSV exported from /$CSV_LANG$/$CSV_GAME$/, currently active /$CUR_LANG$/$CUR_GAME$/. Continue anyway?",
+    "placeholders": {
+      "csv_lang": {
+        "content": "$1"
+      },
+      "csv_game": {
+        "content": "$2"
+      },
+      "cur_lang": {
+        "content": "$3"
+      },
+      "cur_game": {
+        "content": "$4"
+      }
+    }
+  },
+  "update_running": {
+    "message": "Update running: $DONE$/$TOTAL$ ($PCT$%)",
+    "placeholders": {
+      "done": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      },
+      "pct": {
+        "content": "$3"
+      }
+    }
+  },
+  "update_done": {
+    "message": "✓ Update finished: $OK$ ok, $FAIL$ errors",
+    "placeholders": {
+      "ok": {
+        "content": "$1"
+      },
+      "fail": {
+        "content": "$2"
+      }
+    }
+  },
+  "update_aborted": {
+    "message": "Update aborted by user."
+  },
+  "wants_starting": {
+    "message": "Starting wants export..."
+  },
+  "wants_lists_found": {
+    "message": "$N$ wantlists found",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      }
+    }
+  },
+  "wants_processing": {
+    "message": "List $IDX$/$TOTAL$ $NAME$",
+    "placeholders": {
+      "idx": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      },
+      "name": {
+        "content": "$3"
+      }
+    }
+  },
+  "wants_no_lists": {
+    "message": "No wantlists found. Logged in?"
+  },
+  "wants_no_entries": {
+    "message": "No entries found."
+  },
+  "wants_csv_invalid": {
+    "message": "CSV seems invalid — no want IDs detected."
+  },
+  "wants_will_delete": {
+    "message": "$N$ entries will be deleted",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      }
+    }
+  },
+  "wants_will_edit": {
+    "message": "$N$ entries will be edited",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      }
+    }
+  },
+  "cf_detected": {
+    "message": "Cloudflare challenge detected — backoff $S$s",
+    "placeholders": {
+      "s": {
+        "content": "$1"
+      }
+    }
+  },
+  "cf_cascade_abort": {
+    "message": "20 errors in a row → auto-abort. Close tabs, wait 10-15min, clear cookies, log in again, retry with Slow Mode."
+  },
+  "support_head": {
+    "message": "This tool is free and stays free."
+  },
+  "support_sub": {
+    "message": "No ads, no tracking, no account. Built by one person alongside a day job. If it saves you work, either of these helps:"
+  },
+  "support_give": {
+    "message": "Donate €5"
+  },
+  "support_rate": {
+    "message": "Rate it"
+  }
 }
