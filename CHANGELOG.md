@@ -29,6 +29,8 @@ This matters more than it sounds. Thopter Foundry sits at â‚¬0.36 normally and â
 
 Foil and non-foil of the same card therefore count as two lookups. Conditions and languages still share one, since Cardmarket does not split the guide any finer than the variant.
 
+The product link is stripped back to its path before the variant parameter is added. Cardmarket appends your saved account filters to the product links in your stock, and a real export carried `?language=3&isReverseHolo=Y` on every single row, including cards that are not reverse holo. Passed through unchanged, that borrowed parameter would have handed every ordinary card the reverse trend, and it would have done so quietly: the figure looks plausible, it is just the wrong one.
+
 Caught by mdriessenca-cell in [issue #3](https://github.com/LUPZN/cardmarket-stock-exporter/issues/3), who questioned an earlier claim here that the guide was per product only. That claim was wrong: it came from reading the served HTML, which carries a single set of values, without checking what the variant switch does.
 
 ### Fixed

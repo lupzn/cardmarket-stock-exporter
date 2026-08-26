@@ -623,14 +623,25 @@ async function attachTrends(tab, rows, delay) {
   // Karten ohne Foil-Auflage haben den Schalter gar nicht; dort laeuft der Parameter
   // wirkungslos mit und liefert dieselben Zahlen wie ohne ihn.
   const variantOf = (r) => (r.reverse ? 'isReverseHolo=Y' : (r.foil ? 'isFoil=Y' : ''));
-  const keyOf = (r) => (r.idProduct || r.productUrl) + (variantOf(r) ? '|V' : '|N');
+  // Die Adresse aus der Bestandszeile wird bis auf den Pfad abgeschnitten, bevor der
+  // eigene Parameter drankommt.
+  //
+  // Cardmarket haengt die gespeicherten Filtereinstellungen des Kontos an die
+  // Produktlinks im Bestand. In einem echten Export stand an JEDER Zeile
+  // "?language=3&isReverseHolo=Y" — auch an Karten, die gar kein Reverse Holo sind.
+  // Ungefiltert weitergereicht haette dieser fremde Parameter jeder normalen Karte den
+  // Reverse-Trend verpasst, bei Iono 0,19 statt 0,09 EUR. Der Fehler haette sich
+  // ausserdem still verhalten: die Zahl sieht plausibel aus, sie ist nur die falsche.
+  const cleanUrl = (u) => String(u || '').split('?')[0].split('#')[0];
+  const keyOf = (r) => (r.idProduct || cleanUrl(r.productUrl)) + (variantOf(r) ? '|V' : '|N');
   const byProduct = new Map();
   for (const r of rows) {
     if (!r.productUrl) continue;
     const k = keyOf(r);
     if (byProduct.has(k)) continue;
     const p = variantOf(r);
-    byProduct.set(k, p ? r.productUrl + (r.productUrl.includes('?') ? '&' : '?') + p : r.productUrl);
+    const base = cleanUrl(r.productUrl);
+    byProduct.set(k, p ? base + '?' + p : base);
   }
   const skipped = rows.filter(r => !(r.idProduct || r.productUrl) || !r.productUrl).length;
   if (!byProduct.size) {
@@ -717,7 +728,7 @@ async function attachTrends(tab, rows, delay) {
   let numsFilled = 0;
   for (const r of rows) {
     if (!r.productUrl) continue;
-    const key = keyOf(r);
+    const key = keyOf(r);          // gleiche Normalisierung wie beim Sammeln
     if (!guides[key]) continue;
     const g = guides[key];
     r.trend = g;
