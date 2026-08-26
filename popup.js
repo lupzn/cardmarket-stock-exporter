@@ -33,6 +33,8 @@ function showSupportResult(cards, valueEur, minutes) {
 }
 const useSortByEl = document.getElementById('useSortBy');
 const perExpansionEl = document.getElementById('perExpansion');
+// v2.4.0: Preis-Trend optional mitexportieren (Issue #3)
+const fetchTrendEl = document.getElementById('fetchTrend');
 const abortBtn = document.getElementById('abort');
 const progressEl = document.getElementById('progress');
 const progFillEl = document.getElementById('progFill');
@@ -514,6 +516,20 @@ async function runExport(maxPages, opts = {}) {
       return;
     }
 
+    // v2.4.0 (Issue #3): Trendwerte erst jetzt holen — nach dem Scrape, vor der CSV.
+    // Ein Fehler hier darf den fertigen Bestand nicht mitnehmen, deshalb gekapselt:
+    // im schlimmsten Fall faellt die CSV auf den Stand ohne Trendspalten zurueck.
+    // Nach einem Abbruch nicht noch minutenlang Trendwerte holen — wer abbricht,
+    // will raus.
+    if (fetchTrendEl && fetchTrendEl.checked && !result.aborted) {
+      try {
+        await attachTrends(tab, result.rows, delay);
+      } catch (e) {
+        log(tl(`⚠ Trend-Abruf fehlgeschlagen (${e.message}) — CSV wird ohne Trendspalten geschrieben.`,
+               `⚠ Trend fetch failed (${e.message}) — writing the CSV without trend columns.`), 'err');
+      }
+    }
+
     // v2.1: Metadata-Header für Bulk-Update Tab-Mismatch-Detection
     const meta = {
       exportedAt: new Date().toISOString(),
@@ -558,6 +574,170 @@ async function runExport(maxPages, opts = {}) {
   }
 }
 
+// v2.4.0 (Issue #3): Trendwerte holen und an die Zeilen haengen.
+//
+// Cardmarket rechnet die Preisstatistik einmal taeglich neu. Zwoelf Stunden Vorrat
+// sind darum grosszuegig genug, um einen zweiten Export am selben Tag ohne eine
+// einzige Anfrage zu bedienen, und kurz genug, dass niemand mit Zahlen von gestern
+// umpreist.
+const TREND_TTL_MS = 12 * 3600 * 1000;
+const TREND_CACHE_MAX = 40000;
+const TREND_CHUNK = 400;
+const TREND_CONC = 3;
+
+async function loadTrendCache() {
+  try {
+    const { cmTrendCache } = await chrome.storage.local.get('cmTrendCache');
+    return cmTrendCache && typeof cmTrendCache === 'object' ? cmTrendCache : {};
+  } catch (e) { return {}; }
+}
+
+async function saveTrendCache(cache) {
+  try {
+    const now = Date.now();
+    let entries = Object.entries(cache).filter(([, v]) => v && now - (v.t || 0) < TREND_TTL_MS);
+    // chrome.storage.local ist bei 10 MB gedeckelt. Bei Ueberlauf wirft Chrome, und
+    // der Wurf wuerde den Export mitreissen — darum vorher die aeltesten wegwerfen.
+    if (entries.length > TREND_CACHE_MAX) {
+      entries.sort((a, b) => (b[1].t || 0) - (a[1].t || 0));
+      entries = entries.slice(0, TREND_CACHE_MAX);
+    }
+    await chrome.storage.local.set({ cmTrendCache: Object.fromEntries(entries) });
+  } catch (e) {
+    log(tl(`ℹ Trend-Zwischenspeicher konnte nicht gesichert werden: ${e.message}`,
+           `ℹ Could not persist the trend cache: ${e.message}`), '');
+  }
+}
+
+async function attachTrends(tab, rows, delay) {
+  // Ein Produkt, nicht eine Zeile: Zustand und Sprache teilen sich den Trendwert.
+  //
+  // Druckvariante aber NICHT. Cardmarket fuehrt fuer Foil und Reverse Holo eine eigene
+  // Preisstatistik, erreichbar ueber denselben Link plus dem Parameter, den der Schalter
+  // "nur Reverse?" auf der Produktseite setzt. Der Abstand ist gross genug, dass ein
+  // gemeinsamer Wert schaedlich waere — Thopter Foundry steht normal bei 0,36 EUR und in
+  // Foil bei 3,94 EUR. Eine Foil-Zeile haette damit rechnerisch fast 1000 % ueber ihrem
+  // Trend gelegen, und genau danach sortiert jemand, bevor er umpreist.
+  // Von mdriessenca-cell in Issue #3 eingewandt, nachgemessen, bestaetigt.
+  //
+  // Karten ohne Foil-Auflage haben den Schalter gar nicht; dort laeuft der Parameter
+  // wirkungslos mit und liefert dieselben Zahlen wie ohne ihn.
+  const variantOf = (r) => (r.reverse ? 'isReverseHolo=Y' : (r.foil ? 'isFoil=Y' : ''));
+  const keyOf = (r) => (r.idProduct || r.productUrl) + (variantOf(r) ? '|V' : '|N');
+  const byProduct = new Map();
+  for (const r of rows) {
+    if (!r.productUrl) continue;
+    const k = keyOf(r);
+    if (byProduct.has(k)) continue;
+    const p = variantOf(r);
+    byProduct.set(k, p ? r.productUrl + (r.productUrl.includes('?') ? '&' : '?') + p : r.productUrl);
+  }
+  const skipped = rows.filter(r => !(r.idProduct || r.productUrl) || !r.productUrl).length;
+  if (!byProduct.size) {
+    log(tl('⚠ Keine Produktlinks im Export — Trend übersprungen.',
+           '⚠ No product links in this export — trend skipped.'), 'err');
+    return;
+  }
+
+  const cache = await loadTrendCache();
+  const now = Date.now();
+  const guides = {};
+  const missing = [];
+  for (const [id, url] of byProduct) {
+    const c = cache[id];
+    if (c && now - (c.t || 0) < TREND_TTL_MS) guides[id] = c.g;
+    else missing.push({ id, url });
+  }
+
+  if (missing.length) {
+    const perItem = (2000 + (delay || 0)) / TREND_CONC;
+    const mins = Math.max(1, Math.round(missing.length * perItem / 60000));
+    log(tl(
+      `Trend: ${byProduct.size} Abfragen (Foil/Reverse zaehlen eigen), davon ${byProduct.size - missing.length} aus dem Zwischenspeicher. ${missing.length} werden geholt — grob ${mins} Min.`,
+      `Trend: ${byProduct.size} lookups (foil/reverse counted separately), ${byProduct.size - missing.length} from cache. Fetching ${missing.length} — roughly ${mins} min.`
+    ));
+
+    let pollTimer = null;
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => { window.__cmTrendProgress = null; },
+      });
+      pollTimer = setInterval(async () => {
+        try {
+          const [{ result: p }] = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: () => window.__cmTrendProgress || null,
+          });
+          if (!p) return;
+          const pct = p.total ? Math.round((p.done / p.total) * 100) : 0;
+          progFillEl.style.width = pct + '%';
+          progTextEl.textContent = tl(
+            `Trend ${p.done}/${p.total}${p.lastErr ? ' ⚠ ' + p.lastErr : ''}`,
+            `Trend ${p.done}/${p.total}${p.lastErr ? ' ⚠ ' + p.lastErr : ''}`
+          );
+        } catch (e) { /* Tab beschaeftigt */ }
+      }, 800);
+
+      let cfHits = 0, failed = 0, aborted = false;
+      for (let i = 0; i < missing.length; i += TREND_CHUNK) {
+        const chunk = missing.slice(i, i + TREND_CHUNK);
+        const [{ result: res }] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          args: [{ items: chunk, delay, conc: TREND_CONC, baseDone: i, grandTotal: missing.length }],
+          func: injectedFetchTrends,
+        });
+        if (!res) break;
+        Object.assign(guides, res.guides);
+        for (const [id, g] of Object.entries(res.guides)) cache[id] = { t: Date.now(), g };
+        cfHits += res.cfHits || 0;
+        failed += res.failed || 0;
+        if (res.aborted) { aborted = true; break; }
+      }
+
+      await saveTrendCache(cache);
+      const got = Object.keys(guides).length;
+      log(tl(
+        `Trend: ${got}/${byProduct.size} Abfragen mit Werten${failed ? `, ${failed} ohne Antwort` : ''}${cfHits ? `, ${cfHits}× Cloudflare-Bremse` : ''}.`,
+        `Trend: ${got}/${byProduct.size} lookups with values${failed ? `, ${failed} without a response` : ''}${cfHits ? `, ${cfHits} Cloudflare stalls` : ''}.`
+      ), got ? 'ok' : 'err');
+      if (aborted) log(tl('⚠ Trend-Abruf abgebrochen — die restlichen Zeilen bleiben ohne Trendwerte.',
+                          '⚠ Trend fetch aborted — the remaining rows have no trend values.'), 'err');
+    } finally {
+      if (pollTimer) clearInterval(pollTimer);
+    }
+  } else {
+    log(tl(`Trend: alle ${byProduct.size} Abfragen aus dem Zwischenspeicher — keine Anfrage nötig.`,
+           `Trend: all ${byProduct.size} lookups served from cache — no requests needed.`), 'ok');
+  }
+
+  // Sammlernummer nachtragen, wo der Bestand keine geliefert hat. Nur Pokemon haengt sie
+  // an den Kartennamen; bei Magic kommt sie ausschliesslich von der Produktseite, die hier
+  // ohnehin schon geholt wurde. Deshalb kostet das keine weitere Anfrage.
+  let numsFilled = 0;
+  for (const r of rows) {
+    if (!r.productUrl) continue;
+    const key = keyOf(r);
+    if (!guides[key]) continue;
+    const g = guides[key];
+    r.trend = g;
+    if (!g.num) continue;
+    const ec = String(r.expansionCode || '');
+    // Steht hinten schon eine Zahl, hat der Bestand die Nummer geliefert — nicht anfassen.
+    if (/\d/.test(ec.slice(ec.lastIndexOf(' ') + 1))) continue;
+    r.expansionCode = ec ? ec + ' ' + g.num : g.num;
+    numsFilled++;
+  }
+  if (numsFilled) {
+    log(tl(`Sammlernummer für ${numsFilled} Zeile(n) ergänzt, die der Bestand nicht mitliefert.`,
+           `Filled in the collector number for ${numsFilled} row(s) the stock listing does not provide.`), 'ok');
+  }
+  if (skipped) {
+    log(tl(`ℹ ${skipped} Zeile(n) ohne Produktlink — dort bleiben die Trend-Spalten leer.`,
+           `ℹ ${skipped} row(s) without a product link — their trend columns stay empty.`), '');
+  }
+}
+
 function buildCsv(rows, meta = {}) {
   // v2.1: SetCode + CollectorNumber + idProduct als eigene Spalten (ExpansionCode bleibt für Backwards-Compat)
   // v2.1 Skip-Fetch: _OriginalPrice_EUR + _OriginalComments als Read-Only Referenz für Edit-Detection
@@ -565,7 +745,11 @@ function buildCsv(rows, meta = {}) {
   // Massive Reduktion der Cloudflare-Last: 1500 rows mit 50 edits → 50 fetches statt 1500
   // v2.3.0: FullArt/UberRare/WithDie ergaenzt (Force of Will bzw. Star Wars: Destiny).
   // Bulk-Update liest die CSV nach Spaltennamen, bestehende Tabellen funktionieren also weiter.
-  const cols = ['ArticleID', 'idProduct', 'Name', 'ExpansionCode', 'SetCode', 'CollectorNumber', 'Expansion', 'Rarity', 'Language', 'Condition', 'ConditionFull', 'ReverseHolo', 'Foil', 'FirstEd', 'Signed', 'Altered', 'Playset', 'FullArt', 'UberRare', 'WithDie', 'Comments', '_OriginalComments', 'Price_EUR', '_OriginalPrice_EUR', 'Amount', 'Total_EUR', 'ProductUrl', 'ImageUrl', 'delete'];
+  // v2.4.0: Trend-Spalten nur schreiben, wenn auch Trend geholt wurde. Sonst haette jede
+  // CSV fuenf leere Spalten mehr, und in Excel sieht eine leere Spalte aus wie ein Fehler.
+  const withTrend = rows.some(r => r.trend && (r.trend.trend || r.trend.avg30));
+  const trendCols = withTrend ? ['TrendPrice_EUR', 'Avg1_EUR', 'Avg7_EUR', 'Avg30_EUR', 'PriceVsTrend_Pct'] : [];
+  const cols = ['ArticleID', 'idProduct', 'Name', 'ExpansionCode', 'SetCode', 'CollectorNumber', 'Expansion', 'Rarity', 'Language', 'Condition', 'ConditionFull', 'ReverseHolo', 'Foil', 'FirstEd', 'Signed', 'Altered', 'Playset', 'FullArt', 'UberRare', 'WithDie', 'Comments', '_OriginalComments', 'Price_EUR', '_OriginalPrice_EUR', 'Amount', 'Total_EUR', ...trendCols, 'ProductUrl', 'ImageUrl', 'delete'];
   const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   // Excel-formula wrapper to keep long IDs as text (otherwise Excel converts to scientific notation)
   const escId = id => `"=""${String(id ?? '').replace(/"/g, '""')}"""`;
@@ -619,7 +803,20 @@ function buildCsv(rows, meta = {}) {
       esc(r.comments), esc(r.comments),
       // Price_EUR + _OriginalPrice_EUR
       esc(r.price), esc(r.price),
-      esc(amtStr), esc(total), esc(r.productUrl), esc(r.imageUrl || ''),
+      esc(amtStr), esc(total),
+      // v2.4.0: Preis-Trend. PriceVsTrend_Pct ist die Spalte, nach der man sortiert —
+      // sie sagt, wie weit der eigene Preis ueber oder unter dem Trend liegt. Positiv =
+      // teurer als der Trend. Ohne Trendwert bleibt sie leer statt 0, sonst sortiert
+      // eine fehlende Auskunft mitten ins Feld.
+      ...(withTrend ? (() => {
+        const g = r.trend || {};
+        const trendNum = parseFloat(String(g.trend || '').replace(/\./g, '').replace(',', '.'));
+        const pct = (priceNum > 0 && trendNum > 0)
+          ? (((priceNum / trendNum) - 1) * 100).toFixed(1).replace('.', ',')
+          : '';
+        return [esc(g.trend || ''), esc(g.avg1 || ''), esc(g.avg7 || ''), esc(g.avg30 || ''), esc(pct)];
+      })() : []),
+      esc(r.productUrl), esc(r.imageUrl || ''),
       // v2.1: delete-Spalte default N. User setzt auf Y für Bulk-Delete des Listings auf Cardmarket
       esc('N'),
     ].join(';'));
@@ -631,6 +828,147 @@ function buildCsv(rows, meta = {}) {
 // INJECTED FUNCTIONS — must be self-contained (no outer refs).
 // parseRow is duplicated inside each to avoid cross-context issues.
 // ================================================================
+
+// v2.4.0 (Issue #3): Preis-Trend und die 1/7/30-Tage-Schnitte nachladen.
+//
+// Die Werte stehen nirgends im Bestand — Cardmarket zeigt sie nur auf der
+// Produktseite. Also eine Anfrage je Produkt. Nicht je Zeile: Zustaende und
+// Sprachen desselben Produkts teilen sich einen Eintrag, was bei gewachsenen
+// Bestaenden den Grossteil der Anfragen spart.
+//
+// Laeuft im Tab-Kontext, nicht im Popup. Aus dem Popup heraus ginge dieselbe
+// Anfrage ohne Cookies und ohne passenden Referer raus — Cardmarket sieht dann
+// einen fremden Aufrufer und Cloudflare macht deutlich frueher zu.
+async function injectedFetchTrends({ items, delay, conc, baseDone, grandTotal }) {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const isChallenge = (html) => /cf-mitigated|cf-chl-bypass|Just a moment|Checking your browser|cf-browser-verification|Cloudflare Ray ID/i.test(html || '');
+  const isCfStatus = (s) => s === 403 || s === 520 || s === 521 || s === 522 || s === 524 || s === 525;
+
+  // Der Wert steht als eigener Textknoten unmittelbar hinter seinem Label. Deshalb
+  // wird die Seite nicht ueber Klassennamen gelesen — die sind teils obfuskiert und
+  // haben sich schon mehrfach geaendert — sondern als Folge von Blatt-Texten:
+  // Label, dann Wert. Das ueberlebt auch einen Umbau des Markups.
+  const PRICE = /^\d{1,3}(?:\.\d{3})*,\d{1,2}(?:\s*€)?$/;
+  // Die Ziffer im Label ist der eigentliche Anker, nicht das Wort. Ein blosses
+  // /durchschnitt/ trifft sonst auch "Durchschnittliche Versandzeit" aus dem
+  // Verkaeuferfilter weiter unten auf derselben Seite.
+  const KEYS = [
+    ['trend', /^(?:preis[\s-]*trend|price trend|tendance des prix|tendencia de precio|tendenza di prezzo)/i],
+    ['avg30', /(?:^|\D)30[\s-]*(?:tag|day|jour|d[íi]a|giorn)/i],
+    ['avg7', /(?:^|\D)7[\s-]*(?:tag|day|jour|d[íi]a|giorn)/i],
+    ['avg1', /(?:^|\D)1[\s-]*(?:tag|day|jour|d[íi]a|giorn)/i],
+  ];
+  // v2.4.0: Sammlernummer aus demselben Info-Kasten. Bei Magic steht sie nirgends in
+  // der Bestandszeile, nur hier. Alle fuenf Oberflaechensprachen gegengeprueft —
+  // Franzoesisch schert aus und sagt "Nombre" statt "Numero".
+  const NUMLBL = /^(?:number|nummer|num[ée]ro|n[úu]mero|numero|nombre)$/i;
+  // Sammlernummern sehen aus wie 128, 185, 001/250 oder 63a. Die Einschraenkung haelt
+  // gleichnamige Beschriftungen an anderer Stelle draussen.
+  const NUMVAL = /^\d{1,5}[a-z]?(?:\/\d+)?$/i;
+
+  function parseGuide(html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    // Alle nicht-leeren Blatt-Texte in Dokumentreihenfolge. Nichts filtern — sonst
+    // verschiebt sich der Abstand zwischen Label und Wert.
+    const leaves = [];
+    doc.querySelectorAll('*').forEach(el => {
+      if (el.children.length) return;
+      const t = (el.textContent || '').trim().replace(/\s+/g, ' ');
+      if (t) leaves.push(t);
+    });
+    const g = {};
+    const seenLabels = new Set();
+    for (let i = 0; i < leaves.length; i++) {
+      const lbl = leaves[i];
+      if (lbl.length > 60) continue;   // Fliesstext, kein Label
+      if (!g.num && lbl.length < 20 && NUMLBL.test(lbl) && NUMVAL.test(leaves[i + 1] || '')) {
+        g.num = leaves[i + 1];
+      }
+      for (const [k, re] of KEYS) {
+        if (!re.test(lbl)) continue;
+        seenLabels.add(k);
+        if (g[k]) continue;
+        // Der Wert folgt direkt; i+2 nur als Reserve, falls Cardmarket noch ein
+        // Element dazwischenschiebt. Erster Treffer gewinnt — der Info-Kasten steht
+        // vor der Angebotstabelle, in der dieselben Zahlenformate wieder vorkommen.
+        const v = PRICE.test(leaves[i + 1] || '') ? leaves[i + 1]
+          : (PRICE.test(leaves[i + 2] || '') ? leaves[i + 2] : '');
+        if (v) g[k] = v.replace(/\s*€$/, '').trim();
+      }
+    }
+    // Waren ueberhaupt Trend-Beschriftungen da? Auf einen unbekannten Produktlink
+    // antwortet Cardmarket naemlich nicht mit 404, sondern leitet auf die Set-Liste
+    // um — Status 200, Seite ohne Preisstatistik. Ohne diese Pruefung landete so eine
+    // Umleitung als leerer, aber gueltiger Treffer im Zwischenspeicher und die Spalten
+    // waeren zwoelf Stunden lang grundlos leer geblieben.
+    // Zwei Beschriftungen als Schwelle: eine einzelne koennte anderswo zufaellig
+    // auftauchen, vier zusammen gibt es nur im Info-Kasten der Produktseite.
+    // Gefunden, aber wertlos ist erlaubt — eine nie verkaufte Karte hat schlicht
+    // keine Historie, und das ist eine Antwort, kein Fehler.
+    return seenLabels.size >= 2 ? g : null;
+  }
+
+  const guides = {};
+  let done = 0, cfHits = 0, failed = 0;
+  const queue = items.slice();
+
+  async function fetchOne(url) {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (window.__cmExportStop) return null;
+      try {
+        const res = await fetch(url, { credentials: 'include' });
+        if (res.status === 404) return null;
+        if (res.status === 429) {
+          const back = 8000 * (attempt + 1);
+          window.__cmTrendProgress = Object.assign({}, window.__cmTrendProgress || {}, { lastErr: `429 → Pause ${back / 1000}s` });
+          await sleep(back);
+          continue;
+        }
+        if (isCfStatus(res.status)) {
+          cfHits++;
+          const back = 30000 + 15000 * attempt;
+          window.__cmTrendProgress = Object.assign({}, window.__cmTrendProgress || {}, { lastErr: `CF-${res.status} → Pause ${back / 1000}s` });
+          await sleep(back);
+          continue;
+        }
+        if (!res.ok) { await sleep(2000); continue; }
+        const html = await res.text();
+        if (isChallenge(html)) {
+          cfHits++;
+          const back = 30000 + 15000 * attempt;
+          window.__cmTrendProgress = Object.assign({}, window.__cmTrendProgress || {}, { lastErr: `CF-Challenge → Pause ${back / 1000}s` });
+          await sleep(back);
+          continue;
+        }
+        return parseGuide(html);
+      } catch (e) {
+        await sleep(1500);
+      }
+    }
+    return null;
+  }
+
+  async function worker() {
+    while (queue.length) {
+      if (window.__cmExportStop) return;
+      const it = queue.shift();
+      const g = await fetchOne(it.url);
+      // Ein Produkt ohne Trendwerte ist kein Fehler: neu eingestellte Karten haben
+      // schlicht noch keine Verkaufshistorie. Nur wenn gar nichts kam, gilt es als
+      // fehlgeschlagen — sonst waere die Fehlerzahl bei frischen Sets alarmierend hoch.
+      if (g === null) failed++;
+      else guides[it.id] = g;
+      done++;
+      window.__cmTrendProgress = Object.assign({}, window.__cmTrendProgress || {}, {
+        done: baseDone + done, total: grandTotal, cfHits, failed,
+      });
+      if (delay) await sleep(delay);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.max(1, conc || 1) }, worker));
+  return { guides, cfHits, failed, aborted: !!window.__cmExportStop };
+}
 
 async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpansion, cardLangIds, mode, selectedExpansionIds, splitParams }) {
   function parseRow(el) {
@@ -669,8 +1007,40 @@ async function injectedScrapeAll({ maxPages, delay, basePath, useSortBy, perExpa
     row.productUrl = href ? (href.startsWith('http') ? href : 'https://www.cardmarket.com' + href) : '';
     // Full product image URL (S3) — consumed by stock.lupzn.de for browser-side card images.
     { const im = (el.outerHTML || '').match(/https?:\/\/product-images\.s3\.cardmarket\.com\/[^\s"'<>\\]+\.jpg/i); row.imageUrl = im ? im[0] : ''; }
+    // v2.4.0: Set-Code aus der Produktbild-URL statt allein aus dem Kartennamen.
+    //
+    // Nur Pokemon haengt den Code an den Namen ("Bisaknosp (sv2a 002)"). Bei Magic heisst
+    // die Zeile schlicht "Zwiespaltsszepter", die Klammer findet nichts, und ExpansionCode,
+    // SetCode und CollectorNumber blieben leer. Per Mail von Markus Jost gemeldet, der
+    // seinen MTG-Bestand deshalb nicht weiterverarbeiten konnte.
+    //
+    // Der Code steht aber in jeder Zeile: die Bild-URL fuehrt ihn als Ordnernamen, und
+    // zwar unabhaengig von der Oberflaechensprache.
+    //   Magic:   .../1/SUM/16887/16887.jpg     -> SUM
+    //   Pokemon: .../51/sv2a/719444/719444.jpg -> sv2a
+    // Der Seitentitel taugt dafuer nicht: auf Deutsch heisst die Seite nur
+    // "Sonnenring | Cardmarket", den Code "(SOC)" fuehren nur die englische und die
+    // franzoesische Fassung.
+    //
+    // Die Klammer im Namen ist ausserdem nicht immer ein Set-Code. Magic-Standardlaender
+    // heissen "Gebirge (V.1)" — das ist eine Auflagenvariante. Bisher stand deshalb "V.1"
+    // in der SetCode-Spalte, was schlicht falsch war. Darum gewinnt die Klammer nur dann,
+    // wenn sie mit dem Code aus der Bild-URL beginnt.
+    let imgCode = '';
+    if (row.imageUrl) {
+      const seg = row.imageUrl.match(/cardmarket\.com\/\d+\/([^/]+)\//i);
+      if (seg && seg[1] && seg[1].length <= 12) imgCode = seg[1];
+    }
     const m = row.name.match(/\(([^)]+)\)\s*$/);
-    row.expansionCode = m ? m[1] : '';
+    const paren = m ? m[1].trim() : '';
+    if (paren && imgCode && paren.toLowerCase().startsWith(imgCode.toLowerCase())) {
+      row.expansionCode = paren;                       // Pokemon: "sv2a 002"
+    } else if (imgCode) {
+      // Steht in der Klammer eine blosse Zahl, ist es die Sammlernummer und gehoert dazu.
+      row.expansionCode = /^\d+(?:\/\d+)?[a-z]?$/i.test(paren) ? imgCode + ' ' + paren : imgCode;
+    } else {
+      row.expansionCode = paren;                       // ohne Bild bleibt nur der Name
+    }
 
     // v2.1: idProduct extrahieren — Voraussetzung für idArticle-Auto-Rebind in Bulk-Update.
     // Mehrere Fallback-Quellen, weil Cardmarket je nach View unterschiedliche Markup-Patterns nutzt.

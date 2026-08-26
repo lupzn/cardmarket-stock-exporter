@@ -581,5 +581,11 @@
   },
   "locale_hint": {
     "message": "Controls the language Cardmarket returns set and card names in, and therefore what ends up in your CSV. Independent of this popup’s language."
+  },
+  "opt_fetch_trend": {
+    "message": "Load price trend + collector number"
+  },
+  "opt_fetch_trend_hint": {
+    "message": "Loads each card's product page, roughly 0.6 s per card. Provides the price trend, the 1/7/30-day averages and the collector number, which Magic and most other games leave out of the stock listing. Values are kept for 12 h, so a second export finishes instantly."
   }
 }

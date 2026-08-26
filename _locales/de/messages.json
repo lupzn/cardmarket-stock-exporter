@@ -581,5 +581,11 @@
   },
   "locale_hint": {
     "message": "Bestimmt, in welcher Sprache Cardmarket die Set- und Kartennamen liefert — also auch die Inhalte deiner CSV. Unabhängig von der Sprache dieser Oberfläche."
+  },
+  "opt_fetch_trend": {
+    "message": "Preis-Trend + Sammlernummer nachladen"
+  },
+  "opt_fetch_trend_hint": {
+    "message": "Ruft je Karte die Produktseite ab, rund 0,6 s pro Karte. Liefert Preis-Trend, 1/7/30-Tage-Schnitt und die Sammlernummer, die Magic und die meisten Spiele im Bestand nicht mitliefern. Werte bleiben 12 h gespeichert, ein zweiter Export ist sofort fertig."
   }
 }

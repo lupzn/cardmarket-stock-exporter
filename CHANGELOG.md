@@ -6,6 +6,43 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), version
 
 ---
 
+## [2.4.0] — 2026-08-25
+
+Requested in [issue #3](https://github.com/LUPZN/cardmarket-stock-exporter/issues/3) by mdriessenca-cell: looking up the average price of every card by hand was the last manual step left before repricing. Now the export can bring those numbers with it.
+
+### Added
+
+- **Price trend and the 1/7/30-day averages in the stock export**, behind a new checkbox that is off by default. Adds five columns: `TrendPrice_EUR`, `Avg1_EUR`, `Avg7_EUR`, `Avg30_EUR` and `PriceVsTrend_Pct`. The last one is derived, not fetched — it says how far your own price sits above or below the trend, so you can sort by it and see at a glance what needs adjusting.
+- **A 12-hour cache for the fetched values.** Cardmarket recalculates its price statistics once a day, so a second export on the same day costs no requests at all.
+
+### Notes on the cost
+
+Cardmarket publishes these numbers only on the product page, never in your stock listing, so this needs one request per product and print variant. Not per row: conditions and languages of the same card share a lookup, which on a grown stock saves most of the requests.
+
+Measured against a live account: roughly **0.6 s per product** at three parallel requests, with no Cloudflare interference over the sample. Around 300 cards take about three minutes; ten thousand take closer to an hour and a half. That is why the option is off by default, prints a time estimate before it starts, and pairs well with the set export for large stocks. The existing 429 and Cloudflare backoff applies here too, and Abort stops it.
+
+### Foil and Reverse Holo get their own numbers
+
+Cardmarket keeps a separate price guide per print variant, reachable through the same product link plus the parameter behind the "only Reverse?" switch on the product page. A foil row is therefore looked up as foil, a reverse-holo row as reverse holo.
+
+This matters more than it sounds. Thopter Foundry sits at €0.36 normally and €3.94 in foil; Vanquisher's Banner at €5.02 and €16.70. Sharing one value across variants would have put a foil listing roughly 1000% above "its" trend, which is exactly the column someone sorts by before repricing.
+
+Foil and non-foil of the same card therefore count as two lookups. Conditions and languages still share one, since Cardmarket does not split the guide any finer than the variant.
+
+Caught by mdriessenca-cell in [issue #3](https://github.com/LUPZN/cardmarket-stock-exporter/issues/3), who questioned an earlier claim here that the guide was per product only. That claim was wrong: it came from reading the served HTML, which carries a single set of values, without checking what the variant switch does.
+
+### Fixed
+
+- **`ExpansionCode`, `SetCode` and `CollectorNumber` were empty for Magic**, and for every other game that does not print the set code in the card name. Reported by Markus Jost, who could not import his MTG export into another tool.
+
+  The set code was being read from a parenthesis at the end of the card name. Only Pokémon writes one there (`Bisaknosp (sv2a 002)`); a Magic row is just `Zwiespaltsszepter`. The code is now taken from the product image URL instead, which carries it as a folder name (`.../1/SUM/16887/16887.jpg` → `SUM`) in every game and independent of interface language. This costs no extra requests. The page title was the obvious alternative and turned out to be unusable: the German site renders `Sonnenring | Cardmarket`, and only the English and French versions include `(SOC)`.
+
+  The collector number is genuinely absent from the stock listing outside Pokémon, so it is filled from the product page, riding along with the price-trend fetch above at no additional cost.
+
+- **`SetCode` held a version marker instead of a set code** on Magic basic lands. `Gebirge (V.1)` produced `V.1`, which is a print variant, not a set. The name's parenthesis is now trusted only when it agrees with the code from the image URL, so that row now reads `ONS`.
+
+---
+
 ## [2.3.1] — 2026-08-23
 
 Polish found while preparing the new store screenshots.

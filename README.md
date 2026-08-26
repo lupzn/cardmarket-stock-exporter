@@ -46,6 +46,7 @@ Tested on collections with **19,000+ cards**. Works reliably.
 - **Deduplication** — via Cardmarket article ID, no duplicate rows
 - **Rate-limit aware** — automatic 10-second pause on HTTP 429
 - **Excel-ready CSV** — UTF-8 BOM, semicolon separator, proper escaping
+- **📈 Price trend, 1/7/30-day averages and collector numbers** *(v2.4, opt-in)* — the numbers Cardmarket only shows on the product page, brought into the CSV, plus a derived `PriceVsTrend_Pct` column to sort by. Foil and reverse-holo rows get their own values, because Cardmarket keeps a separate guide per print variant. One request per product and variant (not per row) at roughly 0.6 s each, cached for 12 hours, with a time estimate before it starts. Off by default; for large stocks combine it with the set export.
 
 ### ✏️ Bulk Price Update *(v2.0, hardened in v2.1)*
 - **Edit prices in Excel/Google Sheets**, re-upload CSV → all listings updated on Cardmarket
@@ -79,8 +80,8 @@ Tested on collections with **19,000+ cards**. Works reliably.
 | `idProduct` *(v2.1)* | Cardmarket internal product ID — used for auto-rebind on bulk-update |
 | `Name` | Card name including set code |
 | `ExpansionCode` | Combined set + collector code (e.g. `sv2a 063`) — kept for backwards compat |
-| `SetCode` *(v2.1)* | Set code only (e.g. `sv2a`) |
-| `CollectorNumber` *(v2.1)* | Collector number only (e.g. `063`, or `001/250`) |
+| `SetCode` *(v2.1, fixed in v2.4)* | Set code only (e.g. `sv2a`, `SUM`). Read from the product image URL, so it works for every game, not just the ones that print it in the card name |
+| `CollectorNumber` *(v2.1, fixed in v2.4)* | Collector number only (e.g. `063`, or `001/250`). Outside Pokémon the stock listing does not carry it; tick **"Load price trend + collector number"** to fill it from the product page |
 | `Expansion` | Full expansion name (e.g. `Pokémon Card 151`) |
 | `Rarity` | Card rarity (Common, Uncommon, Rare, ...) |
 | `Language` | Card language |
@@ -96,6 +97,9 @@ Tested on collections with **19,000+ cards**. Works reliably.
 | `_OriginalPrice_EUR` *(v2.1)* | **Read-only reference** — leave untouched. Same Skip-Fetch role as `_OriginalComments`. |
 | `Amount` | Quantity in stock |
 | `Total_EUR` | Price × Amount |
+| `TrendPrice_EUR` *(v2.4)* | Cardmarket price trend. Only present when **"Load price trend + collector number"** was ticked |
+| `Avg1_EUR` / `Avg7_EUR` / `Avg30_EUR` *(v2.4)* | 1-, 7- and 30-day average sale price |
+| `PriceVsTrend_Pct` *(v2.4)* | Derived: how far `Price_EUR` sits above (+) or below (−) the trend, in percent. Sort by it to find what needs repricing. Empty when either value is missing |
 | `ProductUrl` | Direct link to the card on Cardmarket |
 | `ImageUrl` | Direct link to the card image |
 | `delete` | Set to `Y` to remove the listing during Bulk-Update. Default `N` |
