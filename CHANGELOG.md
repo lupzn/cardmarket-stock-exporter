@@ -20,6 +20,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), version
 
   Measured on a live list of three wants: the old code produced six row candidates, the new code produces three, each anchored to its own table row with the correct card link.
 
+- **`WantListName` held `Wantlist 25345330` instead of the list's actual name.** The name was read from the link that carried the list ID, but the card view offers two such links per list: an image link with no text, and a button reading "View / Edit". The first one won, its text was empty, and the column fell back to the ID.
+
+  The name lives in the card's heading, not in either link (`div.card-body > h3`). It is now read from there, walking up from the link and stopping at the first level that has a heading so it cannot drift into the neighbouring card. The link's own text remains the next fallback, which is what the list view provides.
+
+  Checked against a live account: three lists that exported as `Wantlist 25345330`, `Wantlist 25345332` and `Wantlist 25345333` now read `test`, `test2` and `test3`.
+
 ---
 
 ## [2.4.0] — 2026-08-25

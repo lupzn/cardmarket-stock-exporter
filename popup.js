@@ -4069,6 +4069,28 @@ async function injectedWantsScrape({ delay }) {
       return [...root.querySelectorAll('a[href*="/Products/"]')].find(isProductLink) || null;
     };
 
+    // v2.4.1: Der Name der Wunschliste steht in der Ueberschrift ihrer Kachel, nicht im
+    // Link. Die Kachelansicht bietet pro Liste zwei Links auf dieselbe ID: ein Bild ohne
+    // Text und einen Knopf "Ansehen / Editieren". Der erste gewann, sein Text war leer,
+    // und die Spalte WantListName fiel auf "Wantlist 25345330" zurueck.
+    //
+    //   DIV.card-body > H3 "test" + H4 "3 Wants (3 Karten)"
+    //
+    // Von der Kachel aufwaerts wird die erste Ueberschrift genommen; die Suche endet auf
+    // der ersten Ebene, die eine hat, damit sie nicht in die Nachbarkachel rutscht. In der
+    // Listenansicht traegt der Link den Namen selbst, darum bleibt er als naechste Stufe.
+    const wantsListName = (a, id) => {
+      let n = a;
+      for (let i = 0; i < 5 && n; i++) {
+        n = n.parentElement;
+        if (!n) break;
+        const h = n.querySelector('h1, h2, h3, h4, h5, h6');
+        const t = (h && h.textContent || '').trim().replace(/\s+/g, ' ');
+        if (t) return t;
+      }
+      return (a.textContent || '').trim().replace(/\s+/g, ' ') || `Wantlist ${id}`;
+    };
+
     // 1. Discover wantlists from /Wants overview page
     writeProgress({ phase: 'discover-lists' });
     console.log(`[CM-Wants] Fetching overview: /${lang}/${game}/Wants`);
@@ -4101,8 +4123,7 @@ async function injectedWantsScrape({ delay }) {
       }
       if (!id || seenIds.has(id)) continue;
       seenIds.add(id);
-      const name = a.textContent.trim().replace(/\s+/g, ' ') || `Wantlist ${id}`;
-      wantlists.push({ id, name });
+      wantlists.push({ id, name: wantsListName(a, id) });
     }
     console.log(`[CM-Wants] Discovered ${wantlists.length} wantlists:`, wantlists.map(w => `${w.id}=${w.name}`).slice(0, 5));
     if (wantlists.length === 0) {
