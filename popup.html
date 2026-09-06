@@ -3,8 +3,7 @@
 <head>
 <meta charset="utf-8">
 <style>
-  /* v2.3.0 — Oberflaeche ueberarbeitet: eigene Icons statt Emoji, ruhigere Farben,
-     klarere Abstufung zwischen Flaeche, Karte und Eingabefeld. */
+  
   :root {
     --bg:#0e1013; --panel:#161a1f; --panel-2:#1c2128; --sunken:#0a0c0f;
     --line:#252b34; --line-soft:#1d222a;
@@ -19,15 +18,13 @@
     margin:0; font-size:12px; line-height:1.4;
     -webkit-font-smoothing:antialiased;
   }
-  /* v2.3.0: KEIN min-height mehr. Chrome deckelt Extension-Popups hart bei 600px Hoehe —
-     eine Mindesthoehe von 700px hat die Scrollleiste also garantiert erzwungen, statt sie
-     zu vermeiden. Ohne sie waechst das Popup nur so weit, wie der Inhalt es braucht. */
+  
   body.detached { width:auto; min-width:560px; max-width:none; min-height:100vh; resize:both; overflow:auto; }
   h3 { margin:0; font-size:14px; font-weight:600; letter-spacing:-0.01em; }
   .hint { font-size:11px; color:var(--fg-dim); margin-bottom:12px; line-height:1.5; }
   .hint b { color:var(--fg); font-weight:600; }
 
-  /* Icons */
+  
   .ico { width:14px; height:14px; flex:0 0 auto; stroke:currentColor; fill:none;
          stroke-width:1.75; stroke-linecap:round; stroke-linejoin:round; }
   .ico-sm { width:12px; height:12px; }
@@ -66,7 +63,7 @@
   .opts b { color:var(--fg); font-weight:600; }
   .opts label { margin:0; display:flex; align-items:center; gap:8px; cursor:pointer; }
 
-  /* Kopfzeile */
+  
   .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:10px; }
   .topbar .title { display:flex; align-items:center; gap:8px; min-width:0; }
   .topbar .mark { width:22px; height:22px; border-radius:6px; flex:0 0 auto;
@@ -77,7 +74,7 @@
               border:1px solid var(--line); color:var(--fg-dim); }
   .btn-icon:hover:not(:disabled) { background:#232932; color:var(--fg); }
 
-  /* Tabs */
+  
   .tabs { display:flex; gap:2px; margin-bottom:14px; border-bottom:1px solid var(--line); }
   .tab { flex:1; padding:9px 8px; background:transparent; color:var(--fg-faint); border:0;
          border-bottom:2px solid transparent; cursor:pointer; font-size:12px; font-weight:550;
@@ -114,7 +111,7 @@
   .langbox[open] > summary::before { content:'▾'; }
   .langsum { color:var(--fg-faint); font-size:10px; margin-left:auto; }
 
-  /* Unterstuetzen */
+  
   .support { margin-top:14px; background:var(--panel); border:1px solid var(--line);
              border-radius:8px; padding:12px 13px; }
   .support .head { font-size:11.5px; color:var(--fg); font-weight:600; margin-bottom:3px; }
@@ -128,7 +125,7 @@
   .support .rate { background:var(--panel-2); color:var(--fg); border:1px solid var(--line); }
   .support .rate:hover { background:#232932; }
 
-  /* Fusszeile */
+  
   .footbar { margin-top:12px; padding-top:10px; border-top:1px solid var(--line-soft);
              display:flex; align-items:center; justify-content:space-between; gap:10px;
              font-size:10px; color:var(--fg-faint); }
@@ -143,8 +140,7 @@
 </style>
 </head>
 <body>
-<!-- v2.3.0: eigenes Icon-Set. Strichzeichnungen auf 16er-Raster, erben Farbe und Strichstaerke
-     vom Text, damit sie in jedem Zustand stimmig sitzen. Ersetzt die frueheren Emoji. -->
+
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
   <symbol id="i-export" viewBox="0 0 16 16"><path d="M8 2v7"/><path d="M5 6.5 8 9.5l3-3"/><path d="M2.5 11v1.5A1.5 1.5 0 0 0 4 14h8a1.5 1.5 0 0 0 1.5-1.5V11"/></symbol>
   <symbol id="i-update" viewBox="0 0 16 16"><path d="M11.4 2.6a1.6 1.6 0 0 1 2.3 2.3L6.5 12 3.5 13l1-3z"/><path d="M10.2 3.8 12.2 5.8"/></symbol>
@@ -190,8 +186,7 @@
 <div class="row2">
  <div style="flex:2">
   <label data-i18n="label_game">Spiel</label>
-  <!-- v2.2.13: alle von Cardmarket unterstuetzten Spiele. Slugs = Cardmarket-Pfadsegment,
-       verifiziert gegen cardmarket.com (DigimonCardGame lieferte vorher 404). -->
+  
   <select id="game">
     <option value="Pokemon">Pokémon</option>
     <option value="Magic">Magic</option>
@@ -215,12 +210,9 @@
     <option value="Spoils">The Spoils</option>
   </select>
  </div>
- <!-- v2.3.0: Die CM-Locale stand frueher als eigene Zeile ganz unten. Hier oben neben dem Spiel
-      gehoert sie inhaltlich hin (beides bestimmt den Cardmarket-Pfad) und spart eine ganze Zeile. -->
+ 
  <div style="flex:1">
-  <!-- v2.3.0: klarer beschriftet. "CM-UI Locale" liess offen, dass hierueber die Set- und
-       Kartennamen laufen — Nutzer hielten die Oberflaechensprache oben rechts dafuer zustaendig
-       und wunderten sich ueber deutsche Set-Namen bei englischer Oberflaeche. -->
+  
   <label title="" data-i18n-title="locale_hint"><span data-i18n="locale_label">CM-UI Locale:</span> <span id="localeAutoNote" style="color:var(--ok)" data-i18n="locale_auto">auto</span></label>
   <select id="lang" title="" data-i18n-title="locale_hint">
     <option value="de">/de/</option>
@@ -232,9 +224,7 @@
  </div>
 </div>
 
-<!-- v2.3.0: eingeklappt per Default. 17 Sprachen in einem offenen Raster kosten rund 140px —
-     bei Chromes 600px-Deckel fuer Popups ist das der Unterschied zwischen "alles sichtbar"
-     und "scrollen". Die Zusammenfassung zeigt, ob gefiltert wird, ohne den Block zu oeffnen. -->
+
 <details class="langbox" style="margin-top:8px">
   <summary><span data-i18n="label_card_lang_filter">Karten-Sprachen filtern</span> <span id="langSummary" class="langsum" data-i18n="label_card_lang_filter_hint">(leer = alle Sprachen)</span></summary>
   <div id="cardLangFilter" style="background:var(--sunken);border:1px solid var(--line);border-radius:6px;padding:8px;display:grid;grid-template-columns:repeat(3,1fr);gap:5px;font-size:10.5px;margin-top:6px">
@@ -249,8 +239,7 @@
     <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" data-lang-id="6"> <span data-i18n="lang_scn">S-Chinesisch</span></label>
     <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" data-lang-id="11"> <span data-i18n="lang_tcn">T-Chinesisch</span></label>
     <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" data-lang-id="9"> <span data-i18n="lang_ru">Russisch</span></label>
-    <!-- v2.2.13: IDs gegen Cardmarket verifiziert. 13 ist Polnisch (war faelschlich als
-         Indonesisch beschriftet), Indonesisch ist 16. 12/14/15/17 fehlten komplett. -->
+    
     <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" data-lang-id="12"> <span data-i18n="lang_nl">Holländisch</span></label>
     <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" data-lang-id="13"> <span data-i18n="lang_pl">Polnisch</span></label>
     <label style="margin:0;display:flex;align-items:center;gap:4px"><input type="checkbox" data-lang-id="14"> <span data-i18n="lang_cs">Tschechisch</span></label>
@@ -293,7 +282,7 @@
 <button id="run" data-i18n="btn_run_export">Vollständigen Export starten</button>
 <button id="abort" class="secondary" style="background:#dc2626;display:none" data-i18n="btn_abort">Abbrechen</button>
 
-<!-- v2.2.7: Gezielter Set-Export -->
+
 <div id="setExportBox" style="margin-top:10px;padding:8px;background:#0f0f0f;border:1px solid #444;border-radius:3px">
   <div style="font-size:11px;color:#ccc;margin-bottom:6px" data-i18n="set_export_hint">Oder gezielt einzelne Sets aus deinem Bestand exportieren:</div>
   <button id="btnLoadSets" class="secondary" data-i18n="btn_load_sets">Meine Sets laden</button>
@@ -317,7 +306,7 @@
 <div id="status" style="display:none"></div>
 <div id="keepOpenHint" class="hint" style="margin-top:6px;font-size:10px;color:#888" data-i18n-html="hint_keep_open">Popup offen lassen während Export — oder <b>Pin</b> klicken</div>
 
-</div><!-- /exportSection -->
+</div>
 
 <div id="updateSection" class="section">
   <div class="hint" data-i18n-html="update_hint">
@@ -365,7 +354,7 @@
 
   <div id="updatePreview"></div>
 
-  <!-- v2.1: Set-Filter zwischen Analyze und Update -->
+  
   <div id="setFilterContainer" style="display:none;margin-top:8px;padding:6px;background:#0f0f0f;border:1px solid #444;border-radius:3px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:11px">
       <span data-i18n-html="set_filter_label"><b>Sets auswählen:</b> nur ausgewählte werden updated</span>
@@ -389,7 +378,7 @@
   </div>
 
   <div id="updateLog" style="margin-top:10px;font-size:10px;max-height:200px;overflow-y:auto;background:#0f0f0f;padding:6px;border-radius:3px;font-family:monospace"></div>
-</div><!-- /updateSection -->
+</div>
 
 <div id="wantsSection" class="section">
   <div class="hint" data-i18n-html="wants_export_hint">
@@ -428,11 +417,10 @@
   <button id="btnWantsDelete" style="display:none;background:#dc2626"><span id="btnWantsDeleteLabel">Bestätige: <span id="wantsDeleteCount">0</span></span></button>
 
   <div id="wantsLog" style="margin-top:10px;font-size:10px;max-height:200px;overflow-y:auto;background:#0f0f0f;padding:6px;border-radius:3px;font-family:monospace"></div>
-</div><!-- /wantsSection -->
+</div>
 
 <div class="support">
-  <!-- v2.3.0: Der Text hier wird nach einem erfolgreichen Export durch die konkrete Leistung
-       ersetzt (Kartenzahl + Warenwert). Eine allgemeine Bitte liest niemand, eine Zahl schon. -->
+  
   <div class="head" id="supportHead" data-i18n="support_head">Das Tool ist kostenlos und bleibt es.</div>
   <div class="sub" id="supportSub" data-i18n="support_sub">Keine Werbung, kein Tracking, kein Konto. Entwickelt von einer Person neben dem Job. Wenn es dir Arbeit erspart, hilft beides:</div>
   <div class="acts">

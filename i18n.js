@@ -1,5 +1,3 @@
-// i18n.js — Hybrid chrome.i18n + manual override via chrome.storage.local
-// chrome.i18n uses browser-locale automatically; storage override lets user toggle DE/EN in popup.
 
 let _overrideMsgs = null;
 let _currentLocale = null;
@@ -29,7 +27,6 @@ async function setLocale(locale) {
 
 function currentLocale() { return _currentLocale; }
 
-// Get translated message by key. vars = array for $1, $2, $3 placeholders.
 function getMsg(key, vars = []) {
   if (_overrideMsgs && _overrideMsgs[key]) {
     const entry = _overrideMsgs[key];
@@ -43,16 +40,10 @@ function getMsg(key, vars = []) {
     }
     return s;
   }
-  // fallback to chrome.i18n (browser-locale based)
   const m = chrome.i18n.getMessage(key, vars);
   return m || key;
 }
 
-// Walk DOM and apply translations to elements with data-i18n* attrs.
-// data-i18n        = textContent
-// data-i18n-html   = innerHTML
-// data-i18n-title  = title attribute
-// data-i18n-placeholder = placeholder attribute
 function applyI18n(root = document) {
   root.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.dataset.i18n;
@@ -76,5 +67,4 @@ function applyI18n(root = document) {
   });
 }
 
-// Expose globally for popup.js
 window.i18n = { loadLocale, setLocale, getMsg, applyI18n, currentLocale };
