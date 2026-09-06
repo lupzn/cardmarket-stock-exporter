@@ -6,6 +6,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), version
 
 ---
 
+## [2.4.1] - 2026-09-06
+
+### Fixed
+
+- **The want-list export returned one line per list instead of the cards in it.** Reported by asier-paz in [issue #4](https://github.com/LUPZN/cardmarket-stock-exporter/issues/4), whose export showed eight lines for eight lists, none with a card name, each pointing at `/Products/AlteredArt`.
+
+  Cardmarket renders two checkboxes per want: one in the table row (`checkWantsRow[]`) and a second for the narrow layout (`mobileCheckWant`), which sits in an accordion outside the table. The row selector ended in `input[data-id-want]`, so it collected both. Each want was therefore processed twice.
+
+  The duplicates were the visible half of the problem. Entries were located by walking up from a checkbox until an ancestor contained any link with `/Products/` in it, and the mobile checkbox has no card link near it, so that walk kept climbing. Where it stopped decided the outcome. On a German test list it stopped just above each mobile checkbox, producing harmless duplicates that the later de-duplication removed, which is why this was never noticed. Where it climbed past the table instead, every checkbox on the page resolved to the same container and collapsed into a single row, whose "card link" was the `/Products/AlteredArt` entry from the filter navigation and whose `IsAltered`, `IsSigned` and language were read off the filter bar.
+
+  Three changes. Only checkboxes named `checkWantsRow[]` count as want rows, verified against live markup where every one of them sits in a table row. A row container may never span more than one want checkbox. And a link counts as a card link only with at least two path segments after `/Products/`, which `/Products/AlteredArt` and `/Products/Singles` do not have.
+
+  Measured on a live list of three wants: the old code produced six row candidates, the new code produces three, each anchored to its own table row with the correct card link.
+
+---
+
 ## [2.4.0] — 2026-08-25
 
 Requested in [issue #3](https://github.com/LUPZN/cardmarket-stock-exporter/issues/3) by mdriessenca-cell: looking up the average price of every card by hand was the last manual step left before repricing. Now the export can bring those numbers with it.

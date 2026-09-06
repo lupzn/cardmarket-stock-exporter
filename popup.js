@@ -4054,6 +4054,21 @@ async function injectedWantsScrape({ delay }) {
       window.__cmWantsProgress = Object.assign({}, window.__cmWantsProgress || {}, p);
     }
 
+    // v2.4.1 (Issue #4): Ein Kartenlink hat hinter /Products/ mindestens zwei Abschnitte,
+    //   /en/Magic/Products/Singles/Magic-2011/Lightning-Bolt
+    // ein Attribut-Filter nur einen,
+    //   /en/Magic/Products/AlteredArt
+    // Genau diese Filterlinks hat der alte Selektor als Kartenlink genommen, weil eine
+    // CSS-Selektorliste das erste passende Element im Dokument liefert und nicht den
+    // ersten Selektor bevorzugt. Ergebnis: leerer Kartenname und ein Link auf die
+    // Attribut-Uebersicht statt auf die Karte.
+    const isProductLink = (a) => /\/Products\/[^/?#]+\/[^/?#]+/.test(a.getAttribute('href') || '');
+    const findProductLink = (root) => {
+      const direct = root.querySelector('a[href*="/Products/Singles/"]');
+      if (direct) return direct;
+      return [...root.querySelectorAll('a[href*="/Products/"]')].find(isProductLink) || null;
+    };
+
     // 1. Discover wantlists from /Wants overview page
     writeProgress({ phase: 'discover-lists' });
     console.log(`[CM-Wants] Fetching overview: /${lang}/${game}/Wants`);
@@ -4152,23 +4167,57 @@ async function injectedWantsScrape({ delay }) {
 
         // v2.1 FIX: Cardmarket-Wants-Markup hat checkbox <input data-id-want="HEX-ID"> innerhalb row-container
         // Strategie: walk up vom checkbox bis ein ancestor product-link enthält (= echter row-container)
-        const checkboxes = [...doc.querySelectorAll('input[name="checkWantsRow[]"][data-id-want], input[data-id-want]')];
+        // v2.4.1 (Issue #4): Cardmarket legt JE WUNSCH ZWEI Checkboxen an — eine in der
+        // Tabellenzeile (name="checkWantsRow[]") und eine fuer die schmale Ansicht
+        // (name="mobileCheckWant"), die in einem Akkordeon ausserhalb der Tabelle sitzt.
+        // Der alte Selektor hatte "input[data-id-want]" als zweite Alternative und fing
+        // damit beide. Die mobilen haben keinen Kartenlink in der Naehe, also lief die
+        // Container-Suche nach oben und alle landeten im selben grossen Container.
+        //
+        // Auf einer deutschen Testliste blieb das folgenlos: dort stehen die Tabellen-
+        // zeilen zuerst, belegen ihre idWant, und die mobilen Dubletten fallen der
+        // Entdopplung zum Opfer. Steht der mobile Block zuerst und sein Container umfasst
+        // die Tabelle mit, kollabiert der ganze Export auf eine Zeile je Wunschliste.
+        //
+        // Gegengeprueft: jede Checkbox mit name="checkWantsRow[]" liegt in einer
+        // Tabellenzeile. Die breite Suche bleibt nur als Reserve, falls Cardmarket den
+        // Namen einmal aendert.
+        let checkboxes = [...doc.querySelectorAll('input[name="checkWantsRow[]"][data-id-want]')];
+        if (!checkboxes.length) {
+          checkboxes = [...doc.querySelectorAll('input[data-id-want]')];
+        }
         const rowSet = new Set();
         const rows = [];
         for (const cb of checkboxes) {
-          // Walk up suchen nach ancestor der einen Products/Singles-link enthält
+          // v2.4.1 (Issue #4): Der Container darf NIE mehr als diese eine Checkbox umfassen.
+          //
+          // Vorher lief die Suche nach oben, bis ein Vorfahr irgendeinen /Products/-Link
+          // enthielt. Bei Wuenschen mit gesetztem Attribut steht im Eintrag aber kein
+          // direkter Kartenlink, also kletterte sie weiter — bis zum Container der ganzen
+          // Liste, der den Filterlink /Products/AlteredArt fuehrt. Ab da war jede weitere
+          // Checkbox ein Duplikat und fiel raus: eine Zeile pro Wunschliste statt eine pro
+          // Karte. Ausgewertet wurde dann der Text der gesamten Liste, weshalb "Altered"
+          // und "Signed" aus der Filterleiste als Eigenschaften der Karte erschienen.
+          // Von asier-paz gemeldet.
+          //
+          // Die Zahl der Checkboxen im Container ist die verlaessliche Grenze: sobald
+          // zwei drin sind, umfasst er mehr als einen Wunsch.
           let container = cb.parentElement;
+          let best = null;
           let depth = 0;
           while (container && depth < 8) {
-            const productLink = container.querySelector('a[href*="/Products/Singles/"], a[href*="/Products/"]');
-            if (productLink) break;
+            if (container.querySelectorAll('input[data-id-want]').length > 1) break;
+            best = container;
+            if (findProductLink(container)) break;
             container = container.parentElement;
             depth++;
           }
-          if (!container || rowSet.has(container)) continue;
-          rowSet.add(container);
-          container._cmCheckbox = cb;
-          rows.push(container);
+          // Auch ohne Kartenlink wird der Eintrag uebernommen. Er traegt idWant, Menge und
+          // Preis, und ein Eintrag ohne Namen ist immer noch besser als ein verschluckter.
+          if (!best || rowSet.has(best)) continue;
+          rowSet.add(best);
+          best._cmCheckbox = cb;
+          rows.push(best);
         }
         // v2.1 diagnostic
         if (page === 1) {
@@ -4228,7 +4277,7 @@ async function injectedWantsScrape({ delay }) {
           }
 
           // Product name + URL
-          const nameLink = el.querySelector('a[href*="/Products/Singles/"], a[href*="/Products/"]');
+          const nameLink = findProductLink(el);
           const productName = (nameLink?.textContent || '').trim().replace(/\s+/g, ' ');
           const href = nameLink?.getAttribute('href') || '';
           const productUrl = href ? (href.startsWith('http') ? href : 'https://www.cardmarket.com' + href) : '';
