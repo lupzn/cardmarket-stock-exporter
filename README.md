@@ -6,15 +6,16 @@
 
 <p align="center">
   <b>Export your complete Cardmarket stock &amp; wantlists to CSV — and bulk-update prices &amp; comments via CSV import.</b><br>
-  Every game Cardmarket sells · German/English UI · Fast Mode (~10×) · bypasses the 300-entry pagination limit.
+  Every game Cardmarket sells · German/English UI · Chrome and Firefox · bypasses the 300-entry pagination limit.
 </p>
 
 <p align="center">
-  <sub>✅ v2.3.1 — all 20 Cardmarket games and all 17 card languages, plus fixes for two bugs that could change a listing's language or condition during Bulk-Update. If you have bulk-updated non-German listings before, see the changelog.</sub>
+  <sub>🦊 Now also for Firefox: <a href="https://addons.mozilla.org/firefox/addon/cardmarket-stock-exporter/">install from Firefox Add-ons</a>. Same features as the Chrome version.</sub>
 </p>
 
 <p align="center">
   <a href="https://chromewebstore.google.com/detail/fdhioinnlcopijnekmkpfkopeplpgdkj"><img src="https://img.shields.io/badge/Chrome%20Web%20Store-Install-4285F4?logo=google-chrome&logoColor=white" alt="Chrome Web Store"></a>
+  <a href="https://addons.mozilla.org/firefox/addon/cardmarket-stock-exporter/"><img src="https://img.shields.io/badge/Firefox%20Add--ons-Install-FF7139?logo=firefoxbrowser&logoColor=white" alt="Firefox Add-ons"></a>
   <a href="https://github.com/LUPZN/cardmarket-stock-exporter/releases/latest"><img src="https://img.shields.io/github/v/release/LUPZN/cardmarket-stock-exporter?color=2563eb" alt="Latest Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" alt="GPL-3.0 License"></a>
   <a href="https://www.paypal.com/donate/?hosted_button_id=X8MG6CZK2PETS"><img src="https://img.shields.io/badge/PayPal-Donate-ffc439?logo=paypal&logoColor=white" alt="Donate via PayPal"></a>
@@ -137,7 +138,14 @@ Export metadata (timestamp, locale, game, tool version) lives in the **filename*
 3. Confirm the permissions
 4. Done — icon appears in the Chrome toolbar
 
-### Option B — Manual install from source (developer mode)
+### Option B — Firefox Add-ons
+
+1. Open the [Firefox Add-ons listing](https://addons.mozilla.org/firefox/addon/cardmarket-stock-exporter/) (Firefox 140 or newer, desktop only)
+2. Click **"Add to Firefox"** and confirm the permissions
+3. If Firefox asks for access to www.cardmarket.com, allow it (also under `about:addons` → the extension → **Permissions**)
+4. Firefox closes the popup when the save dialog opens; the CSV is still saved. For long runs, use the 📌 pin button so the window stays open.
+
+### Option C — Manual install from source (developer mode, Chrome)
 
 1. Download the latest release ZIP from [Releases](https://github.com/LUPZN/cardmarket-stock-exporter/releases/latest)
 2. Extract the ZIP anywhere on your computer
@@ -357,7 +365,7 @@ If this extension saves you hours of manual work, consider a small donation. Eve
 
 You can also:
 - ⭐ **Star this repo** on GitHub
-- 🌟 **Rate 5 stars** on the [Chrome Web Store](https://chromewebstore.google.com/detail/fdhioinnlcopijnekmkpfkopeplpgdkj)
+- 🌟 **Rate 5 stars** on the [Chrome Web Store](https://chromewebstore.google.com/detail/fdhioinnlcopijnekmkpfkopeplpgdkj) or on [Firefox Add-ons](https://addons.mozilla.org/firefox/addon/cardmarket-stock-exporter/)
 - 🐦 **Share** with fellow TCG sellers
 
 ---
